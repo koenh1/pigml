@@ -1,0 +1,21 @@
+<rewriter xmlns="http://marklogic.com/xdmp/rewriter">
+   <match-path matches="^/static/(.*)">
+    <match-method any-of="GET">
+        <dispatch/>
+    </match-method>
+   </match-path>
+   <match-path matches="^/fs/([^/]+)$">
+        <set-database>$1</set-database>
+        <add-query-param name="path">/</add-query-param>
+        <dispatch>/fs.xqy</dispatch>
+   </match-path>
+   <match-path matches="^/fs/([^/]+)/(.*)$">
+        <set-database>$1</set-database>
+        <add-query-param name="path">/$2</add-query-param>
+        <dispatch>/fs.xqy</dispatch>
+   </match-path>
+   <match-path matches="^/fs(/)?$">
+        <dispatch>/fs.xqy</dispatch>
+   </match-path>
+
+ </rewriter>
