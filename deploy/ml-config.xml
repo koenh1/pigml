@@ -99,7 +99,7 @@
           <database name="${content-db}"/>
           <modules name="${app-modules-db}"/>
           <root>${modules-root}</root>
-          <authentication>${authentication-method}</authentication>
+          <authentication>digestbasic</authentication>
           <default-user name="${default-user}"/>
           <url-rewriter>${url-rewriter}</url-rewriter>
           <error-handler>${error-handler}</error-handler>
@@ -502,6 +502,20 @@
     <amp>
       <namespace>http://marklogic.com/lib/xquery/fs-api</namespace>
       <local-name>amped-capabilities</local-name>
+      <doc-uri>/lib/fs-api.xqy</doc-uri>
+      <db-name>${app-modules-db}</db-name>
+      <role-name>admin</role-name>
+    </amp>
+    <amp>
+      <namespace>http://marklogic.com/lib/xquery/fs-api</namespace>
+      <local-name>amped-list-fields</local-name>
+      <doc-uri>/lib/fs-api.xqy</doc-uri>
+      <db-name>${app-modules-db}</db-name>
+      <role-name>admin</role-name>
+    </amp>
+    <amp>
+      <namespace>http://marklogic.com/lib/xquery/fs-api</namespace>
+      <local-name>amped-last-modified</local-name>
       <doc-uri>/lib/fs-api.xqy</doc-uri>
       <db-name>${app-modules-db}</db-name>
       <role-name>admin</role-name>
