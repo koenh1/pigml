@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:es="http://www.wolterskluwer.com/schemas/appollo/entity/v1.0" targetNamespace="http://www.wolterskluwer.com/schemas/appollo/entity/v1.0" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:element name="entity-schema">
+		<xs:annotation>
+			<xs:documentation>An entity schema</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="imports" minOccurs="0" maxOccurs="1">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="module" type="es:module" minOccurs="0" maxOccurs="unbounded"/>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="data-types" minOccurs="0" maxOccurs="1">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="data-type" type="es:data-type" minOccurs="1" maxOccurs="unbounded"/>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="entities" minOccurs="0" maxOccurs="1">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="entity-type" type="es:entity-type" minOccurs="1" maxOccurs="unbounded"/>
+						</xs:sequence>
+					</xs:complexType>
+					<xs:unique name="state-machine-names">
+						<xs:selector xpath=".//es:state-machine"/>
+						<xs:field xpath="@name"/>
+					</xs:unique>
+				</xs:element>
+			</xs:sequence>
+			<xs:attribute name="namespace" type="xs:anyURI" use="required"/>
+		</xs:complexType>
+		<xs:unique name="entity-names">
+			<xs:selector xpath=".//es:entity-type"/>
+			<xs:field xpath="@name"/>
+		</xs:unique>
+		<xs:key name="type-names">
+			<xs:selector xpath=".//es:data-type"/>
+			<xs:field xpath="@name"/>
+		</xs:key>
+		<xs:key name="module-names">
+			<xs:selector xpath="es:imports/es:module"/>
+			<xs:field xpath="@name"/>
+		</xs:key>
+		<xs:keyref name="module-ref" refer="es:module-names">
+			<xs:selector xpath=".//es:action"/>
+			<xs:field xpath="@module"/>
+		</xs:keyref>
+		<xs:keyref name="type-ref" refer="es:type-names">
+			<xs:selector xpath=".//es:action"/>
+			<xs:field xpath="@argument-type"/>
+		</xs:keyref>
+		<xs:keyref name="action-ref" refer="es:action-names">
+			<xs:selector xpath=".//es:event"/>
+			<xs:field xpath="@action"/>
+		</xs:keyref>
+		<xs:unique name="unique-state-names">
+			<xs:selector xpath=".//es:state"/>
+			<xs:field xpath="@name"/>
+		</xs:unique>
+		<xs:keyref name="guard-state-ref" refer="es:state-names">
+			<xs:selector xpath=".//es:guard"/>
+			<xs:field xpath="@state"/>
+		</xs:keyref>
+		<xs:key name="action-names">
+			<xs:selector xpath=".//es:action|.//es:constructor"/>
+			<xs:field xpath="@name"/>
+		</xs:key>
+	</xs:element>
+	<xs:complexType name="entity-type">
+		<xs:sequence>
+			<xs:element name="constructors" minOccurs="1" maxOccurs="1">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="constructor" type="es:namedaction" minOccurs="0" maxOccurs="unbounded"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="canonizer" type="es:canonaction" minOccurs="1" maxOccurs="1"/>
+			<xs:element name="actions" minOccurs="0" maxOccurs="1">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="action" type="es:namedaction" minOccurs="0" maxOccurs="unbounded"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="state-machine" maxOccurs="unbounded" minOccurs="0" type="es:state-machine">
+				<xs:key name="state-names">
+					<xs:selector xpath=".//es:state"/>
+					<xs:field xpath="@name"/>
+				</xs:key>
+				<xs:keyref name="state-ref" refer="es:state-names">
+					<xs:selector xpath=".//es:target"/>
+					<xs:field xpath="@state"/>
+				</xs:keyref>
+				<xs:keyref name="inital-state-ref" refer="es:state-names">
+					<xs:selector xpath="."/>
+					<xs:field xpath="@initial-state"/>
+				</xs:keyref>
+				<xs:keyref name="error-state-ref" refer="es:state-names">
+					<xs:selector xpath="."/>
+					<xs:field xpath="@error-state"/>
+				</xs:keyref>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="name" use="required" type="xs:Name"/>
+		<xs:attribute name="directory" use="required" type="xs:anyURI"/>
+		<xs:attribute name="depth" default="1">
+			<xs:simpleType>
+				<xs:restriction base="xs:string">
+					<xs:enumeration value="1"/>
+					<xs:enumeration value="unbounded"/>
+				</xs:restriction>
+			</xs:simpleType>
+		</xs:attribute>
+	</xs:complexType>
+	<xs:complexType name="state-machine">
+		<xs:annotation>
+			<xs:documentation>In each state machine exactly one state is active at the time. 
+			The idea is that different state machine describes orthogonal aspects of the entity state.
+			It should be possible to refactor any workflow into this form.  
+		</xs:documentation>
+		</xs:annotation>
+		<xs:sequence>
+			<xs:element ref="es:state" minOccurs="1" maxOccurs="unbounded"/>
+		</xs:sequence>
+		<xs:attribute name="name" use="required" type="xs:Name"/>
+		<xs:attribute name="initial-state" use="required"/>
+		<xs:attribute name="error-state" use="required"/>
+	</xs:complexType>
+	<xs:element name="state">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="es:event" minOccurs="0" maxOccurs="unbounded"/>
+			</xs:sequence>
+			<xs:attribute name="name" type="xs:Name" use="required"/>
+			<xs:attribute name="initial" type="xs:boolean" use="optional" fixed="true"/>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="event">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="guard" minOccurs="0" maxOccurs="unbounded">
+					<xs:annotation>
+						<xs:documentation>A guard allows one to specify that a different state machine must be in some specific state or states. If multiple guard states are specified from a single state machine, the conditions are OR-ed. Guard referring to different state machines are AND-ed.</xs:documentation>
+					</xs:annotation>
+					<xs:complexType>
+						<xs:attribute name="state" use="required"/>
+						<xs:attribute name="invert" default="false" type="xs:boolean"/>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="target" minOccurs="0" maxOccurs="unbounded">
+				<xs:annotation><xs:documentation>If multiple output states are specified, the action should return exactly one of these state names, otherwise a run-time-error is generated (and the transaction is aborted).</xs:documentation></xs:annotation>
+					<xs:complexType>
+						<xs:attribute name="state" use="required"/>
+					</xs:complexType>
+				</xs:element>
+			</xs:sequence>
+			<xs:attribute name="action" use="required"/>
+			<xs:attribute name="async" type="xs:boolean" default="false"/>
+		</xs:complexType>
+	</xs:element>
+	<xs:complexType name="data-type">
+		<xs:choice>
+			<xs:element name="schema" minOccurs="1" maxOccurs="1">
+				<xs:complexType>
+					<xs:attribute name="schema-location" use="required"/>
+					<xs:attribute name="namespace" use="required"/>
+					<xs:attribute name="element" use="required"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="any-xml" minOccurs="1" maxOccurs="1">
+				<xs:complexType>
+					<xs:attribute name="namespace" use="optional"/>
+					<xs:attribute name="element" use="required"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:choice>
+		<xs:attribute name="name" type="xs:Name" use="required"/>
+		<xs:attribute name="mime-type" use="required"/>
+	</xs:complexType>
+	<xs:complexType name="module">
+		<xs:attribute name="name" use="required" type="xs:Name"/>
+		<xs:attribute name="namespace" use="required"/>
+		<xs:attribute name="at" use="required"/>
+	</xs:complexType>
+	<xs:complexType name="action">
+		<xs:attribute name="function" use="required"/>
+		<xs:attribute name="module" use="optional"/>
+		<xs:attribute name="argument-type" use="optional"/>
+	</xs:complexType>
+	<xs:complexType name="namedaction">
+		<xs:complexContent>
+			<xs:extension base="es:action">
+				<xs:attribute name="name" use="required" type="xs:Name"/>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+	<xs:complexType name="canonaction">
+		<xs:complexContent>
+			<xs:restriction base="es:action">
+				<xs:attribute name="argument-type" use="prohibited"/>
+			</xs:restriction>
+		</xs:complexContent>
+	</xs:complexType>
+</xs:schema>

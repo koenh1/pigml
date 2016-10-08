@@ -8,16 +8,35 @@ import module namespace sec="http://marklogic.com/xdmp/security" at "/MarkLogic/
 declare namespace fs="http://marklogic.com/xdmp/status/forest";
 declare namespace prop="http://marklogic.com/xdmp/property";
 declare namespace db="http://marklogic.com/xdmp/database";
+declare namespace wkes="http://www.wolterskluwer.com/schemas/appollo/entity/v1.0";
+declare namespace es="http://marklogic.com/entity-services";
 
+declare variable $fs-api:entities-path:='/entity-schemas/';
+
+declare function fs-api:resolve-entity($uri as xs:string) as xs:string* {
+	for $s in xdmp:directory($fs-api:entities-path)/wkes:entity-schema
+		for $et in $s/wkes:entities/wkes:entity-type[starts-with($uri,@directory)]
+			return if ($et/@depth='Infinity' or not(fn:contains(substring-after($uri,$et/@directory),'/'))) then (concat($s/@namespace,'#',$et/@name),concat($s/@at,$et/@name,'.xqy')) else ()
+};
+
+declare function fs-api:get-entity-constructor($uri as xs:string) as function(*)* {
+	let $r:=fs-api:resolve-entity($uri)
+	return if (fn:empty($r)) then ()
+	else 
+	let $script:=fn:string-join(("import module namespace ent=""",$r[1],""" at """,$r[2],""";","(ent:generic-create-from-doc#2,ent:valid-events#1)"),"")
+	return xdmp:eval($script)
+};
 
 declare function fs-api:amped-roles() as xs:unsignedLong* {
 	let $user:=xdmp:get-request-field('user')
 	let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
-	return xdmp:invoke-function(function(){sec:get-role-ids(sec:user-get-roles($me))}, <options xmlns="xdmp:eval"><database>{xdmp:security-database()}</database></options>)/data()
+	return xdmp:user-roles($me)
+(:	return xdmp:invoke-function(function(){sec:get-role-ids(sec:user-get-roles($me))}, <options xmlns="xdmp:eval"><database>{xdmp:security-database()}</database></options>)/data() :)
 };
 
 declare function fs-api:amped-capabilities($uri as xs:string,$roles as xs:unsignedLong*) as xs:string* {
-	let $admin:=xdmp:invoke-function(function(){sec:get-role-ids('admin')}, <options xmlns="xdmp:eval"><database>{xdmp:security-database()}</database></options>)/data()
+	let $admin:=xdmp:role('admin')
+	(:xdmp:invoke-function(function(){sec:get-role-ids('admin')}, <options xmlns="xdmp:eval"><database>{xdmp:security-database()}</database></options>)/data() :)
 	return if ($admin=$roles) then ('read','update','insert','delete','execute') else xdmp:document-get-permissions($uri)[sec:role-id=$roles]//sec:capability/string()
 };
 
@@ -29,12 +48,15 @@ declare private function fs-api:find-uri-privilege-impl($uri as xs:string) as xs
 	try{xdmp:has-privilege($uri,'uri')} catch($ex){false()}
 };
 
-declare function fs-api:amped-document-get-permissions($uri as xs:string) as object-node() {
+declare function fs-api:amped-document-get-permissions($uri as xs:string) as json:object {
 	let $p:=xdmp:document-get-permissions($uri)
 	let $roles:=fn:distinct-values($p//sec:role-id/data())
 	let $rolenames:=xdmp:invoke-function(function(){sec:get-role-names($roles)}, <options xmlns="xdmp:eval"><database>{xdmp:security-database()}</database></options>)/data()
 	let $map:=map:new(for $role at $i in $roles return map:entry(string($role),$rolenames[$i]))
-	return xdmp:to-json(map:new(for $role in $roles return map:entry(map:get($map,string($role)),$p[sec:role-id=$role]/sec:capability/data())))/object-node()
+	return json:object(<json:object>{
+			for $role in $roles order by map:get($map,string($role)) 
+			return <json:entry key="{map:get($map,string($role))}">
+				<json:value><json:array>{for $d in $p[sec:role-id=$role]/sec:capability order by $d return (<json:value>{$d/data()}</json:value>)}</json:array></json:value></json:entry>}</json:object>)
 };
 
 declare function fs-api:find-uri-privilege($uri as xs:string) as xs:boolean {
@@ -104,8 +126,20 @@ return object-node{
 	}
 };
 
+declare function fs-api:entity-info($e as element(es:entity),$uri as xs:string,$ident as xs:string, $roles,$list as xs:boolean) as object-node() {
+	let $capabilities:=fs-api:amped-capabilities($uri,$roles)
+	let $lm:=fs-api:amped-last-modified($uri,$capabilities)
+	let $size:=string-length(xdmp:quote($e))
+	return object-node {
+		"name":fn:tokenize($ident,'/')[last()],
+		"ident":concat($ident,'/'),
+		"mime":"application/vnd.pigshell.dir",
+		"size":$size,
+		"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000}
+	}
+};
 
-declare function fs-api:files($path,$dbname,$ident,$roles) {
+declare function fs-api:files($path,$dbname,$ident,$roles) as array-node() {
 	let $vpath:=fn:replace($path,'//','/')
 	let $uris:=fs-api:amped-uri-match(concat($path,'*'))
 	let $uris2:=if ($path='/') then fs-api:amped-uri-match('http://*') else ()
@@ -124,21 +158,64 @@ declare function fs-api:files($path,$dbname,$ident,$roles) {
 				else
 					let $uri:=concat($path,$p)
 					let $doc:=doc($uri)
+					let $ident:=concat('/fs/',$dbname,'/content',$vpath,$p)
+					return if ($doc/es:entity) then fs-api:entity-info($doc/es:entity,$uri,$ident,$roles,false())
+					else
 					let $capabilities:=fs-api:amped-capabilities($uri,$roles)
 					let $lm:=fs-api:amped-last-modified($uri,$capabilities)
 					let $size:=if ($doc/binary()) then xdmp:binary-size($doc/binary()) else string-length(xdmp:quote($doc,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
 					let $mime0:=xdmp:uri-content-type($uri)
 					let $mime:=if ($mime0='application/x-unknown-content-type') then if ($doc/text()) then 'text/plain' else if ($doc/object-node()) then 'application/json' else if ($doc/*) then 'text/xml' else if ($doc/binary()) then 'application/octet-stream' else $mime0 else $mime0 
-					return object-node{"owner":$me,"_hidden":not($capabilities='read'),"executable":$capabilities='execute',"readable": $capabilities='read', "writable": $capabilities='update',"uri":$uri,"ident":concat('/fs/',$dbname,'/content',$vpath,$p),"mime": $mime,"name":$p,
+					return object-node{"owner":$me,"_hidden":not($capabilities='read'),"executable":$capabilities='execute',"readable": $capabilities='read', "writable": $capabilities='update',"uri":$uri,"ident":$ident,"mime": $mime,"name":$p,
 						"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},"size":$size}
 			}
 };
-declare function fs-api:dir($path,$dbname,$ident,$roles) {
+
+declare function fs-api:entity-dir($ent as element(es:entity),$uri as xs:string,$ident as xs:string,$fcapabilities as xs:string*,$dbname as xs:string,$me as xs:string) as object-node() {
+	object-node {
+			"name":fn:tokenize($uri,'/')[.!=''][last()],
+			"ident":$ident,
+			"mime":'application/vnd.pigshell.dir',
+			"readable":$fcapabilities='read',
+			"writable":$fcapabilities=('insert','delete'),
+			"owner":$me,
+			"files":array-node {
+				object-node {
+					"name":"ctl",
+					"ident":concat($ident,'ctl/'),
+					"mime":'application/vnd.pigshell.dir',
+					"readable":$fcapabilities='read',
+					"writable":$fcapabilities=('insert','delete'),
+					"owner":$me
+				},
+				object-node {
+					"name":"entity.xml",
+					"ident":concat($ident,'entity.xml'),
+					"mime":'text/xml',
+					"readable":$fcapabilities='read',
+					"writable":$fcapabilities=('insert','delete'),
+					"size":string-length(xdmp:quote($ent)),
+					"owner":$me
+				}
+			}
+		}
+};
+declare function fs-api:dir($path,$dbname,$ident,$roles,$stat) {
 	if (not(fn:ends-with($path,'/'))) then fn:error(xs:QName('error')) else
 	let $fcapabilities:=fs-api:amped-capabilities($path,$roles)
 	let $user:=xdmp:get-request-field('user')
 	let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
-	return object-node {
+	let $ent:=if (string-length($path) gt 1) then doc(substring($path,1,string-length($path)-1)) else ()
+	return if (fn:empty($ent/es:entity))
+	then if ($stat) then object-node {
+			"name":if ($path='/') then $dbname else fn:tokenize($path,'/')[.!=''][last()],
+			"ident":$ident,
+			"mime":'application/vnd.pigshell.dir',
+			"readable":$fcapabilities='read',
+			"writable":$fcapabilities=('insert','delete'),
+			"owner":$me
+		}
+		else object-node {
 			"name":if ($path='/') then $dbname else fn:tokenize($path,'/')[.!=''][last()],
 			"ident":$ident,
 			"mime":'application/vnd.pigshell.dir',
@@ -147,6 +224,7 @@ declare function fs-api:dir($path,$dbname,$ident,$roles) {
 			"owner":$me,
 			"files":fs-api:files($path,$dbname,$ident,$roles)
 		}
+	else fs-api:entity-dir($ent/es:entity,base-uri($ent),$ident,$fcapabilities,$dbname,$me)
 };
 
 declare function fs-api:fieldlistfile($fieldname,$dbname) {
@@ -178,6 +256,10 @@ let $ident:=concat('/fs/',$dbname,'/content',$docpath)
 let $roles:=fs-api:amped-roles()
 let $user:=xdmp:get-request-field('user')
 let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
+let $mapped-hpath:=
+	if (fn:ends-with($hpath,'/entity.xml') and fn:exists(doc(substring-before($hpath,'/entity.xml'))))
+		then substring-before($hpath,'/entity.xml')
+	else $hpath
 
 (: let $user:=xdmp:get-request-field("user")
 let $_:=if (fn:empty($user)) then ()
@@ -220,8 +302,13 @@ else if (fn:empty($docpath) and fn:empty($fieldpath)) then
 else if ($fieldpath=('','/')) then fs-api:amped-list-fields()
 else if ($fieldvalueuri) then 
 	let $uri:=cts:uris((),"document",cts:field-value-query($fieldname,$fieldvalue,"exact"))[xdmp:integer-to-hex(xdmp:hash64(.))=$fieldvalueuri]
-	let $_:=xdmp:add-response-header('Content-Type','text/plain')
-	return <a target="_blank" href="{xdmp:get-request-protocol()}://{xdmp:get-request-header("Host")}/fs/{$dbname}/content/{replace($uri,'^/','')}">{{{{name}}}}</a>
+	let $doc:=doc($uri)
+	return if ($doc/es:entity) then 
+		let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.dir')
+		return fs-api:entity-dir($doc/es:entity,$uri,concat('/fs/',$dbname,'/content',$uri,'/'),fs-api:amped-capabilities($uri,$roles),$dbname,$me)
+		else
+			let $_:=xdmp:add-response-header('Content-Type','text/plain')
+			return <a target="_blank" href="{xdmp:get-request-protocol()}://{xdmp:get-request-header("Host")}/fs/{$dbname}/content/{replace($uri,'^/','')}">{{{{name}}}}</a>
 else if ($fieldpath=concat('/',$fieldname)) then 
 	let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.dir')
 	return object-node {
@@ -287,7 +374,7 @@ else if ($fieldvalue) then
 				let $mime0:=xdmp:uri-content-type($uri)
 				let $mime:=if ($mime0='application/x-unknown-content-type') then if ($doc/text()) then 'text/plain' else if ($doc/object-node()) then 'application/json' else if ($doc/*) then 'text/xml' else if ($doc/binary()) then 'application/octet-stream' else $mime0 else $mime0 
 			return object-node {
-				"mime":$mime,
+				"mime":if ($doc/es:entity) then 'application/vnd.pigshell.dir' else $mime,
 				"uri":$uri,
 				"name":concat(xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'),
 				"ident":concat('/fs/',$dbname,'/fields/',$fieldname,'/values/',$fieldvalue,'/',xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'),
@@ -299,8 +386,8 @@ else if ($fieldvalue) then
 			}
 		}
 	}
-else if (not(fn:ends-with($hpath,'/')) and fs-api:amped-uri-match($hpath)) then
-	let $doc:=doc($hpath)
+else if (not(fn:ends-with($hpath,'/')) and fs-api:amped-uri-match($mapped-hpath)) then
+	let $doc:=doc($mapped-hpath)
 	return if (fn:empty($doc)) then
 		let $_:=xdmp:set-response-code(404,"not existant or nonreadable document "||$hpath)
 		return ()
@@ -309,22 +396,29 @@ else if (not(fn:ends-with($hpath,'/')) and fs-api:amped-uri-match($hpath)) then
 	let $mime:=if ($mime0='application/x-unknown-content-type') then if ($doc/text()) then 'text/plain' else if ($doc/object-node()) then 'application/json' else if ($doc/*) then 'text/xml' else if ($doc/binary()) then 'application/octet-stream' else $mime0 else $mime0 
 	return if ($op='stat') then 
 		let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.pstyfile')
-		let $fcapabilities:=fs-api:amped-capabilities($hpath,$roles)
+		let $fcapabilities:=fs-api:amped-capabilities($mapped-hpath,$roles)
+		let $lm:=fs-api:amped-last-modified($mapped-hpath,$fcapabilities)
+		let $size:=if ($doc/binary()) then xdmp:binary-size($doc/binary()) else string-length(xdmp:quote($doc,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
 		return object-node {
 			"name":fn:tokenize($hpath,'/')[last()],
 			"ident":$ident,
 			"mime":$mime,
 			"owner":$me,
+			"size":$size,
+			"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
 			"readable":$fcapabilities='read',
 			"writable":$fcapabilities=('insert','delete'),
-			"executable":$fcapabilities='execute'
+			"executable":$fcapabilities='execute',
+			"add-collections":array-node{for $i in xdmp:document-get-collections($mapped-hpath) order by $i return $i},
+			"add-permissions":fs-api:amped-document-get-permissions($hpath),
+			"properties":json:object(fs-api:properties-to-json(xdmp:document-properties($mapped-hpath)/*/*))
 		}
 	else 
 	let $_:=xdmp:add-response-header('Content-Type',$mime)
 	return $doc
 else
 	let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.dir')
-	return fs-api:dir($hpath,$dbname,$ident,$roles)
+	return fs-api:dir($hpath,$dbname,$ident,$roles,xdmp:get-request-field('op')='stat')
 else if ($method='POST') then
 	let $filename:=xdmp:get-request-field("filename")
 	let $data0:=xdmp:get-request-field("data")
@@ -335,10 +429,31 @@ else if ($method='POST') then
 	let $size:=if ($data/binary()) then xdmp:binary-size($data/binary()) else string-length(xdmp:quote($data,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
 	return if ($op='put') then
 		if (starts-with($uri,'/') or starts-with($uri,'http:/')) then
-			let $_:=xdmp:document-insert($uri,$data)
-			let $_:=xdmp:set-response-code(201,"Created")
-			let $tm:=fn:current-dateTime()
-			return object-node {"owner":$me, "ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
+			let $entity:=fs-api:get-entity-constructor($uri)[1]
+			return if (fn:empty($entity)) then
+					let $_:=xdmp:document-insert($uri,$data)
+					let $_:=xdmp:set-response-code(201,"Created")
+					let $tm:=fn:current-dateTime()
+					return object-node {"owner":$me, "ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
+				else 
+					let $data2:=$entity($uri,$data)
+					let $_:=xdmp:document-insert($uri,$data2)
+					let $_:=xdmp:set-response-code(201,"Created")
+					let $tm:=fn:current-dateTime()
+					return object-node {
+							"owner":$me,
+							"mime":"application/vnd.pigshell.dir",
+							"entity":fn:namespace-uri-from-QName(xdmp:function-name($entity)), 
+							"ident":concat('/fs/',$dbname,$uri),
+							"name":$filename,"readable":true(),
+							"writable":true(),
+							"size":$size,
+							"mime":$mime,
+							"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000},
+							"files":array-node {
+
+							}
+						}
 		else 
 			let $_:=xdmp:set-response-code(404,"unvalid path")
 			return ()
@@ -363,6 +478,15 @@ else if ($method='POST') then
 	else if ($op='chmod') then 
 		if (fn:exists(doc($uri))) then
 			let $data0:=xdmp:get-request-field("data")
+			return if (fn:empty($data0)) then 
+				let $_:=xdmp:set-response-code(200,"OK")
+				let $_:=xdmp:add-response-header('Content-Type','application/json')
+				return object-node {
+						"name" : fn:tokenize($uri,'/')[last()],
+						"add-collections":array-node{xdmp:document-get-collections($uri)},
+						"add-permissions":fs-api:amped-document-get-permissions($uri)
+					}
+			else
 			let $data:=xdmp:unquote($data0,'format-json')
  			let $_:=if ($data/object-node()) then
 				(
@@ -370,17 +494,13 @@ else if ($method='POST') then
 					$data//add-collections!xdmp:document-add-collections($uri,./data()),
 					$data//remove-permissions!xdmp:document-remove-permissions($uri,for $k in ./node() return xdmp:permission(name($k),$k/data())),
 					$data//add-permissions!xdmp:document-add-permissions($uri,for $k in ./node() return xdmp:permission(name($k),$k/data())),
-					$data//set-properties!xdmp:document-set-properties($uri,for $k in ./node() return element{xs:QName(name($k))}{$k/data()}),
-					$data//add-properties!xdmp:document-add-properties($uri,for $k in ./node() return element{xs:QName(name($k))}{$k/data()})
+					$data//set-properties!xdmp:document-set-properties($uri,fs-api:properties-fromjson((),.)),
+					$data//add-properties!xdmp:document-add-properties($uri,fs-api:properties-fromjson((),.)),
+					$data//remove-properties!xdmp:document-remove-properties($uri,xs:QName(string(.)))
 				)
-
 			else ()
-			let $_:=xdmp:set-response-code(200,"OK")
-			let $_:=xdmp:add-response-header('Content-Type','application/json')
-			return object-node {
-				"add-collections":array-node{xdmp:document-get-collections($uri)},
-				"add-permissions":fs-api:amped-document-get-permissions($uri)
-			}
+			let $_:=xdmp:set-response-code(204,"No Content")
+			return ()
 		else 
 			let $_:=xdmp:set-response-code(404,"not found")
 			return ()
@@ -417,6 +537,40 @@ else ()
 
 };
 
+
+declare private function fs-api:properties-fromjson($name as xs:string?,$a) {
+  typeswitch($a)
+  case object-node() return if ($name) then element{$name}{$a/node()!fs-api:properties-fromjson(name(.),.)} else $a/node()!fs-api:properties-fromjson(name(.),.)
+  case array-node() return $a/node()!element{$name}{fs-api:properties-fromjson((),.)}
+  case null-node() return if ($name) then element{$name}{attribute xsi:nil {true()}} else attribute xsi:nil {true()}
+  case text() return if ($name) then element{$name}{$a} else $a
+  case item() return if ($name) then element{$name}{attribute xsi:type {'xs:'||xdmp:type($a)},string($a)} else (attribute xsi:type {'xs:'||xdmp:type($a)},string($a))
+  default return $a
+};
+
+declare private function fs-api:property-tojson($name as xs:string?,$a as item(),$at as item()*) {
+  typeswitch($a)
+  case element() return if ($name) then <json:entry key="{$name}">{
+    if ($a/*) then <json:value>{fs-api:properties-to-json($a/node())}</json:value>
+    else if ($a/node()) then $a/node()!fs-api:property-tojson((),.,($at,./@*))
+    else <json:value xsi:nil="true"/>}
+   </json:entry>
+    else <json:value>{$at,$a/node()!fs-api:property-tojson((),.,./@*)}</json:value>
+  case text() return <json:value>{$at,$a}</json:value>
+  default return $a
+};
+
+declare private function fs-api:properties-tojson($a as map:map) {
+  <json:object>{for $k in map:keys($a)
+    let $v as item()*:=map:get($a,$k)
+     order by $k
+    return if (fn:count($v)=1) then fs-api:property-tojson($k,$v,$v/@*) else 
+      <json:entry key="{$k}"><json:value><json:array>{$v!fs-api:property-tojson((),./node(),./@*)}</json:array></json:value></json:entry>
+  }</json:object>
+};
+declare private function fs-api:properties-to-json($x as element()*) {
+  fs-api:properties-tojson(fn:fold-left(function($acc,$i){$acc+map:entry(name($i),$i)}, map:new(), $x))
+};
 
 
 
