@@ -19,7 +19,7 @@ module namespace ent= "<xsl:value-of select="@namespace"/>#<xsl:value-of select=
 declare namespace error="http://marklogic.com/xdmp/error";
 declare namespace es="http://marklogic.com/entity-services";
 declare namespace state="http://www.wolterskluwer.com/ns/appollo/state/1.0";
-import module namespace sem = "http://marklogic.com/semantics" at "/MarkLogic/semantics.xqy";
+declare namespace sem = "http://marklogic.com/semantics";
 <xsl:for-each select=".//x:schema[@namespace]|.//x:any-xml[@namespace]">
 declare namespace x<xsl:value-of select="count(preceding::*/@namespace)"/>="<xsl:value-of select="@namespace"/>";
 </xsl:for-each>
@@ -245,8 +245,14 @@ declare function ent:<xsl:value-of select="@name"/>($uri as xs:string,<xsl:apply
 	</xsl:for-each>
 </xsl:template>
 
+<xsl:template match="@async">
+	<xsl:if test=".='true'">
+		<xsl:text> %es:async </xsl:text>
+	</xsl:if>
+</xsl:template>
+
 <xsl:template match="x:action">
-declare function ent:<xsl:value-of select="@name"/>($ent as element(es:entity)<xsl:if test="@argument-type">,<xsl:apply-templates select="@argument-type"/></xsl:if><xsl:text>) as element(es:entity) {</xsl:text>
+declare <xsl:text/><xsl:apply-templates select="@async"/> <xsl:text/>function ent:<xsl:value-of select="@name"/>($ent as element(es:entity)<xsl:if test="@argument-type">,<xsl:apply-templates select="@argument-type"/></xsl:if><xsl:text>) as element(es:entity) {</xsl:text>
 	<xsl:for-each select="x:match-execute-privilege">let $_:=xdmp:security-assert((<xsl:apply-templates select="."/>),'execute')</xsl:for-each>
 	<xsl:for-each select="x:match-security-role">let $_:=ent:role-assert((<xsl:apply-templates select="."/>))</xsl:for-each>
     let $states as map:map:=map:new($ent/es:states/state:state!map:entry(./@fsm,@name))
@@ -273,7 +279,7 @@ declare private function ent:canonical($node as node(),$data as map:map,$triples
 		} else(),
 		if (map:count($triples)) then element es:triples {
 			for $k in map:keys($triples) 
-				let $t as element(sem:triples):=sem:rdf-serialize(map:get($triples,$k),'triplexml')
+				let $t as element(sem:triples):=element sem:triples {map:get($triples,$k)}
 				return element{xs:QName($k)}{$t}
 		} else (),
 		if (map:count($attachments)) then element es:attachments {

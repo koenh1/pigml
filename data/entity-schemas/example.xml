@@ -25,15 +25,14 @@
 				<action name="add-receiver" function="add-receiver" module="example" argument-type="address"/>
 				<action name="add-message" function="add-message" module="example" argument-type="message"/>
 				<action name="set-subject" function="set-subject" module="example" argument-type="text"/>
-				<action name="send" function="send" module="example">
+				<action name="send" function="send" module="example" async="true">
 					<match-execute-privilege any-of="http://www.wolterskluwer.com/ns/appollo/marklogic/entity/example/permission-send"/>
 					<match-security-role any-of="example-sender"/>
-					<match-security-role any-of="example-sender2"/>
 				</action>
 			</actions>
 			<state-machine name="sent-state" initial-state="unsent" error-state="draft">
 				<state name="unsent">
-					<event action="send" async="true">
+					<event action="send">
 						<guard state="ready"/>
 						<target state="sent"/>
 					</event>

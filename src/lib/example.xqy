@@ -32,5 +32,5 @@ declare function ex:set-subject($subject as xs:string,$data as map:map,$triples 
 };
 
 declare function ex:send($data as map:map,$triples as map:map,$attachments as map:map) as xs:string* {
-	'sent'
+	xdmp:sleep(60000),'sent'
 };
