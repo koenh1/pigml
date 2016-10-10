@@ -475,12 +475,13 @@ else
 	return fs-api:dir($hpath,$dbname,$ident,$roles,xdmp:get-request-field('op')='stat')
 else if ($method='POST') then
 	let $filename:=xdmp:get-request-field("filename")
-	let $data0:=xdmp:get-request-field("data")
+	let $data0b:=document{xdmp:get-request-field("data")}
+	let $data0:=if ($data0b/binary()) then xdmp:binary-decode($data0b/binary(),'utf-8') else $data0b/node()
 	let $uri:=concat($hpath,$filename)
 	let $mime0:=xdmp:uri-content-type($filename)
-	let $data:=document{if (contains($mime0,'xml')) then xdmp:unquote($data0,"format-xml") else if (contains($mime0,'json')) then xdmp:unquote($data0,"format-json") else  $data0}
+	let $data:=document{if (contains($mime0,'xml')) then xdmp:unquote($data0,"format-xml") else if (contains($mime0,'json')) then xdmp:unquote($data0,(),('format-json','repair-full')) else  $data0}
 	let $mime:=if ($mime0='application/x-unknown-content-type') then if ($data/text()) then 'text/plain' else if ($data/object-node()) then 'application/json' else if ($data/*) then 'text/xml' else if ($data/binary()) then 'application/octet-stream' else $mime0 else $mime0 
-	let $size:=if ($data/binary()) then xdmp:binary-size($data/binary()) else string-length(xdmp:quote($data,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
+	let $size:=string-length(xdmp:quote($data,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
 	return if ($op='put') then
 		if (fn:empty($filename) or $filename='') then
 			let $_:=xdmp:set-response-code(400,"invalid request")
