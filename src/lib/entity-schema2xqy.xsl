@@ -33,6 +33,13 @@ declare variable $directories as xs:string*:=(<xsl:text/>
 </xsl:for-each>);
 <xsl:variable name="simple-constructors" select=".//x:constructor[key('simple-type',@argument-type)]"/>
 <xsl:variable name="complex-constructors" select=".//x:constructor[key('complex-type',@argument-type)]"/>
+declare function ent:canonical($ent as element(es:entity)) as element(es:entity) {
+    let $states as map:map:=map:new($ent/es:states/state:state!map:entry(./@fsm,@name))
+    let $data as map:map:=map:new($ent/es:data/*!map:entry(local-name(.),./node()))
+    let $triples as map:map:=map:new($ent/es:triples/*!map:entry(local-name(.),./node()//sem:triple!sem:triple(.)))
+    let $attachments as map:map:=map:new($ent/es:attachments/es:attachment!map:entry(local-name(.),(./@*[name()!='href'],./node())))
+    return ent:canonical($ent,$data,$triples,$attachments,ent:assert-states($states),$states,map:new())
+};
 declare function ent:generic-create-from-doc($uri as xs:string,$doc as document-node()) as element(es:entity) {
 	let $asxml as element()?:=try{if ($doc/*) then $doc/* else xdmp:unquote($doc,(),'format-xml')/*}catch($ex){()}
 	return if (fn:empty($asxml)) then
@@ -121,6 +128,13 @@ declare private function ent:valid-states-impl($states as map:map,$event as xs:s
 	</xsl:for-each>
 	return (<xsl:apply-templates select="x:state-machine" mode="switch-state2"/>)
 };
+declare private function ent:assert-states($states as map:map) as map:map {
+	<xsl:for-each select="x:state-machine">
+		let $<xsl:value-of select="@name"/>:=map:get($states,'<xsl:value-of select="@name"/>')
+	</xsl:for-each>
+	let $_:=(<xsl:apply-templates select="x:state-machine" mode="switch-state3"/>)
+	return $states
+};
 </xsl:template>
 
 <xsl:template match="x:state-machine" mode="switch-state">
@@ -158,6 +172,15 @@ declare private function ent:valid-states-impl($states as map:map,$event as xs:s
 				</xsl:for-each></xsl:otherwise>
 			</xsl:choose>
 	)
+	</xsl:for-each>
+	default return ent:error('invalid-state','<xsl:value-of select="@name"/> has invalid state '||$<xsl:value-of select="@name"/>)
+</xsl:template>
+
+<xsl:template match="x:state-machine" mode="switch-state3">
+	<xsl:if test="position()!=1">,</xsl:if>
+	switch($<xsl:value-of select="@name"/>)
+	<xsl:for-each select="x:state">
+	case '<xsl:value-of select="@name"/>' return ()
 	</xsl:for-each>
 	default return ent:error('invalid-state','<xsl:value-of select="@name"/> has invalid state '||$<xsl:value-of select="@name"/>)
 </xsl:template>

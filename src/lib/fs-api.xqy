@@ -28,6 +28,14 @@ declare function fs-api:amped-get-entity-constructor($uri as xs:string) as funct
 	return xdmp:eval($script)
 };
 
+declare function fs-api:amped-get-entity-canonical($uri as xs:string) as function(*)* {
+	let $r:=fs-api:resolve-entity($uri)
+	return if (fn:empty($r)) then ()
+	else 
+	let $script:=fn:string-join(("import module namespace ent=""",$r[1],""" at """,$r[2],""";","(ent:canonical#1)"),"")
+	return xdmp:eval($script)
+};
+
 declare function fs-api:amped-get-entity-action($uri as xs:string,$action as xs:string,$args as xs:int) as function(*)* {
 	let $r:=fs-api:resolve-entity($uri)
 	return if (fn:empty($r)) then ()
@@ -272,6 +280,10 @@ declare function fs-api:fieldlistfile($fieldname,$dbname) {
 	}
 };
 
+declare private function remove-end-slash($s as xs:string) as xs:string {
+	if (ends-with($s,'/')) then substring($s,1,string-length($s)-1) else $s
+};
+
 declare function fs-api:main() {
 
 let $path:=xdmp:get-request-field('path')
@@ -457,7 +469,7 @@ else if (not(fn:ends-with($mapped-hpath,'/')) and fs-api:amped-uri-match($mapped
 			}
 		else 
 		let $_:=xdmp:add-response-header('Content-Type',$mime)
-		return $doc
+		return if ($doc/es:entity) then xdmp:quote($doc,<options xmlns="xdmp:quote"><indent-untyped>yes</indent-untyped></options>) else $doc
 else
 	let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.dir')
 	return fs-api:dir($hpath,$dbname,$ident,$roles,xdmp:get-request-field('op')='stat')
@@ -493,13 +505,25 @@ else if ($method='POST') then
 					</options>) else $f()
 				let $_:=xdmp:set-response-code(204,"no content")
 				return ()
+			else if (doc(remove-end-slash($mapped-hpath))/es:entity) then
+				if ($filename='entity.xml') then
+					let $canonical as function(*):=fs-api:amped-get-entity-canonical(remove-end-slash($mapped-hpath))
+					let $ent:=xdmp:unquote($data0,'format-xml')/es:entity
+					let $nent:=$canonical($ent)
+					let $_:=xdmp:document-insert(remove-end-slash($mapped-hpath),$nent)
+					let $_:=xdmp:set-response-code(201,"Updated")
+					let $tm:=fn:current-dateTime()
+					return object-node {"owner":$me, "uri":remove-end-slash($mapped-hpath),"ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
+				else 
+					let $_:=xdmp:set-response-code(404,"unvalid path")
+					return ()					
 			else
 				let $constr:=fs-api:amped-get-entity-constructor($uri)
 				return if (fn:empty($constr)) then
 						let $_:=xdmp:document-insert($uri,$data)
 						let $_:=xdmp:set-response-code(201,"Created")
 						let $tm:=fn:current-dateTime()
-						return object-node {"owner":$me, "ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
+						return object-node {"owner":$me, "uri":$uri,"ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
 					else 
 						let $data2:=$constr[1]($uri,$data)
 						let $_:=xdmp:document-insert($uri,$data2)
@@ -538,7 +562,7 @@ else if ($method='POST') then
 		let $_:=xdmp:set-response-code(204,"No Content")
 		return ()
 	else if ($op='chmod') then 
-		let $furi:=if (ends-with($uri,'/')) then substring($uri,1,string-length($uri)-1) else $uri
+		let $furi:=remove-end-slash($uri)
 		return if (fn:exists(doc($furi))) then
 			let $data0:=xdmp:get-request-field("data")
 			return if (fn:empty($data0)) then 
