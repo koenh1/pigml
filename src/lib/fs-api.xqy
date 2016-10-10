@@ -482,7 +482,10 @@ else if ($method='POST') then
 	let $mime:=if ($mime0='application/x-unknown-content-type') then if ($data/text()) then 'text/plain' else if ($data/object-node()) then 'application/json' else if ($data/*) then 'text/xml' else if ($data/binary()) then 'application/octet-stream' else $mime0 else $mime0 
 	let $size:=if ($data/binary()) then xdmp:binary-size($data/binary()) else string-length(xdmp:quote($data,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
 	return if ($op='put') then
-		if (starts-with($uri,'/') or starts-with($uri,'http:/')) then
+		if (fn:empty($filename) or $filename='') then
+			let $_:=xdmp:set-response-code(400,"invalid request")
+			return ()
+		else if (starts-with($uri,'/') or starts-with($uri,'http:/')) then
 			if (ends-with($hpath,'/ctl/')) then
 				let $ent as element(es:entity):=doc($mapped-hpath)/es:entity
 				let $action:=fs-api:amped-get-entity-action($mapped-hpath,$filename,2)
@@ -505,7 +508,7 @@ else if ($method='POST') then
 					</options>) else $f()
 				let $_:=xdmp:set-response-code(204,"no content")
 				return ()
-			else if (doc(remove-end-slash($mapped-hpath))/es:entity) then
+			else if ($mapped-hpath ne '/' and doc(remove-end-slash($mapped-hpath))/es:entity) then
 				if ($filename='entity.xml') then
 					let $canonical as function(*):=fs-api:amped-get-entity-canonical(remove-end-slash($mapped-hpath))
 					let $ent:=xdmp:unquote($data0,'format-xml')/es:entity

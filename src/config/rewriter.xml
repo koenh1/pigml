@@ -9,9 +9,9 @@
         <add-query-param name="path">/</add-query-param>
         <dispatch>/fs.xqy</dispatch>
    </match-path>
-   <match-path matches="^/fs/([^/]+)/(.*)$">
+   <match-path matches="^/fs/([^/]+)(/.*)$">
         <set-database>$1</set-database>
-        <add-query-param name="path">/$2</add-query-param>
+        <add-query-param name="path">$2</add-query-param>
         <dispatch>/fs.xqy</dispatch>
    </match-path>
    <match-path matches="^/fs(/)?$">
