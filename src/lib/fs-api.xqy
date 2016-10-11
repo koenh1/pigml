@@ -14,6 +14,14 @@ declare namespace es="http://marklogic.com/entity-services";
 
 declare variable $fs-api:entities-path:='/entity-schemas/';
 
+declare function fs-api:compile() {
+	for $s in xdmp:directory($fs-api:entities-path)//wkes:entity-type
+	let $m:=xdmp:xslt-invoke('/lib/entity-schema2xqy.xsl',$s)
+	let $uri:=concat($s/ancestor::wkes:entity-schema/@at,$s/@name,'.xqy')
+	return ($uri,$m,xdmp:invoke-function(function(){xdmp:document-insert($uri,text{$m},(xdmp:permission("entity-role", "execute"),xdmp:permission("entity-role", "read")))},
+	  <options xmlns="xdmp:eval"><database>{xdmp:modules-database()}</database></options>))
+};
+
 declare function fs-api:resolve-entity($uri as xs:string) as xs:string* {
 	for $s in xdmp:directory($fs-api:entities-path)/wkes:entity-schema
 		for $et in $s/wkes:entities/wkes:entity-type[starts-with($uri,@directory)]
@@ -458,6 +466,7 @@ else if (not(fn:ends-with($mapped-hpath,'/')) and fs-api:amped-uri-match($mapped
 				"ident":$ident,
 				"mime":$mime,
 				"owner":$me,
+				"uri":$mapped-hpath,
 				"size":$size,
 				"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
 				"readable":$fcapabilities='read',
@@ -465,6 +474,7 @@ else if (not(fn:ends-with($mapped-hpath,'/')) and fs-api:amped-uri-match($mapped
 				"executable":$fcapabilities='execute',
 				"add-collections":array-node{for $i in xdmp:document-get-collections($mapped-hpath) order by $i return $i},
 				"add-permissions":fs-api:amped-document-get-permissions($hpath),
+				"set-quality":xdmp:document-get-quality($mapped-hpath),
 				"properties":json:object(fs-api:properties-to-json(xdmp:document-properties($mapped-hpath)/*/*))
 			}
 		else 
@@ -575,7 +585,8 @@ else if ($method='POST') then
 				return object-node {
 						"name" : fn:tokenize($uri,'/')[last()],
 						"add-collections":array-node{xdmp:document-get-collections($furi)},
-						"add-permissions":fs-api:amped-document-get-permissions($furi)
+						"add-permissions":fs-api:amped-document-get-permissions($furi),
+						"set-quality":xdmp:document-get-quality($furi)
 					}
 			else
 			let $data:=xdmp:unquote($data0,'format-json')
@@ -587,7 +598,8 @@ else if ($method='POST') then
 					$data//add-permissions!xdmp:document-add-permissions($furi,for $k in ./node() for $d in $k/text() return xdmp:permission(name($k),$d)),
 					$data//set-properties!xdmp:document-set-properties($furi,fs-api:properties-fromjson((),.)),
 					$data//add-properties!xdmp:document-add-properties($furi,fs-api:properties-fromjson((),.)),
-					$data//remove-properties!xdmp:document-remove-properties($furi,xs:QName(string(.)))
+					$data//remove-properties!xdmp:document-remove-properties($furi,xs:QName(string(.))),
+					$data//set-quality!xdmp:document-set-quality($furi,.//data())
 				)
 			else ()
 			let $_:=xdmp:set-response-code(204,"No Content")
