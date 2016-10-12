@@ -275,9 +275,9 @@ declare function fs-api:dir($path,$dbname,$ident,$roles,$stat) {
 	else fs-api:entity-dir($ent/es:entity,base-uri($ent),$ident,$fcapabilities,$dbname,$me)
 };
 
-declare function fs-api:fieldlistfile($fieldname,$dbname) {
-	let $size:=sum(cts:field-values($fieldname)!string-length(fn:encode-for-uri(.))+1)
-	return object-node {
+declare function fs-api:fieldlistfile($fieldname,$dbname) as object-node()* {
+	let $size:=sum(cts:field-values($fieldname)!string-length(.)+1)
+	return (object-node {
 		"mime":"text/plain",
 		"name":"values.txt",
 		"ident":concat('/fs/',$dbname,'/fields/',$fieldname,'/values.txt'),
@@ -285,7 +285,16 @@ declare function fs-api:fieldlistfile($fieldname,$dbname) {
 		"writable":false(),
 		"size":$size,
 		"owner":xdmp:get-current-user()
-	}
+	},
+	object-node {
+		"mime":"application/json",
+		"name":"counts.json",
+		"ident":concat('/fs/',$dbname,'/fields/',$fieldname,'/counts.json'),
+		"readable":true(),
+		"writable":false(),
+		"size":0,
+		"owner":xdmp:get-current-user()
+	})
 };
 
 declare private function remove-end-slash($s as xs:string) as xs:string {
@@ -380,27 +389,43 @@ else if ($fieldpath=concat('/',$fieldname)) then
 				"ident":concat('/fs/',$dbname,'/fields/',$fieldname,'/values/'),
 				"readable":true(),
 				"writable":false(),
-				"owner":$me
+				"owner":$me,
+				"count":cts:count-aggregate(cts:field-reference($fieldname),"document")
 			}
 		}
 	}
 else if ($fieldpath=concat('/',$fieldname,'/values.txt')) then 
 	if ($op='stat') then 
 		let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.pstyfile')
-		return fs-api:fieldlistfile($fieldname,$dbname)
+		return fs-api:fieldlistfile($fieldname,$dbname)[1]
 	else 
 		let $_:=xdmp:add-response-header('Content-Type','text/plain')
-		return string-join(cts:field-values($fieldname)!fn:encode-for-uri(.),'&#10;')
+		return string-join(cts:field-values($fieldname),'&#10;')
+else if ($fieldpath=concat('/',$fieldname,'/counts.json')) then 
+	if ($op='stat') then 
+		let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.pstyfile')
+		return fs-api:fieldlistfile($fieldname,$dbname)[2]
+	else 
+		let $_:=xdmp:add-response-header('Content-Type','application/json')
+		return array-node {
+				for $i in cts:values(cts:field-reference($fieldname),(),("document","frequency-order","limit=1000000"),()) 
+				return object-node {
+					"key":fn:encode-for-uri($i),
+					"data":cts:frequency($i) 
+				} 
+		}
 else if ($fieldpath=concat('/',$fieldname,'/values/')) then
-	object-node {
+	let $vv:=cts:field-values($fieldname)
+	return object-node {
 		"mime":'application/vnd.pigshell.dir',
 		"name":'data',
 		"ident":concat('/fs/',$dbname,'/fields/',$fieldname,'/values/'),
 		"readable":true(),
 		"writable":false(),
 		"owner":$me,
+		"count":fn:count($vv),
 		"files":array-node {
-			for $v in cts:field-values($fieldname) return object-node {
+			for $v in $vv return object-node {
 				"mime":'application/vnd.pigshell.dir',
 				"count":cts:count($v),
 				"name":fn:encode-for-uri($v),
