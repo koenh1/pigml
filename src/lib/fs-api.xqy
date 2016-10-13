@@ -214,7 +214,7 @@ declare function fs-api:entity-ctl-dir($ent as element(es:entity),$uri as xs:str
 		}
 };
 
-declare function fs-api:files($path,$dbname,$ident,$roles) as array-node() {
+declare function fs-api:files($path,$dbname,$roles) as array-node() {
 	let $vpath:=fn:replace($path,'//','/')
 	let $uris:=fs-api:amped-uri-match(concat($path,'*'))
 	let $uris2:=if ($path='/') then fs-api:amped-uri-match('http://*') else ()
@@ -223,31 +223,105 @@ declare function fs-api:files($path,$dbname,$ident,$roles) as array-node() {
 	let $user:=xdmp:get-request-field('user')
 	let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
 	return array-node{
-				for $p in fn:distinct-values($paths) return 
-				if (fn:ends-with($p,'/')) then
-					let $luris:=$uris!substring-after(.,concat($path,$p))!(if (contains(.,'/')) then concat(substring-before(.,'/'),'/') else .)
-					let $count:=fn:count(fn:distinct-values($luris))
-					let $priv:=fs-api:find-uri-privilege(concat($path,$p))
-					return object-node{"owner":$me,"readable": true(), "writable": $priv,"ident":concat('/fs/',$dbname,'/content',$vpath,$p),"count":$count,"mime": "application/vnd.pigshell.dir","name":substring-before($p,'/'),
-						"mtime":number-node{0},"size":0}
-				else
-					let $uri:=concat($path,$p)
-					let $doc:=doc($uri)
-					let $ident:=concat('/fs/',$dbname,'/content',$vpath,$p)
-					let $capabilities:=fs-api:amped-capabilities($uri,$roles)
-					return if ($doc/es:entity) then 
-						fs-api:entity-dir($doc/es:entity,$uri,$ident,$capabilities,$dbname,$me)
-					else
-					let $lm:=fs-api:amped-last-modified($uri,$capabilities)
-					let $size:=if ($doc/binary()) then xdmp:binary-size($doc/binary()) else string-length(xdmp:quote($doc,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
-					let $mime0:=xdmp:uri-content-type($uri)
-					let $mime:=if ($mime0='application/x-unknown-content-type') then if ($doc/text()) then 'text/plain' else if ($doc/object-node()) then 'application/json' else if ($doc/*) then 'text/xml' else if ($doc/binary()) then 'application/octet-stream' else $mime0 else $mime0 
-					return object-node{"owner":$me,"_hidden":not($capabilities='read'),"executable":$capabilities='execute',"readable": $capabilities='read', "writable": $capabilities='update',"uri":$uri,"ident":$ident,"mime": $mime,"name":$p,
-						"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},"size":$size}
+		for $p in fn:distinct-values($paths) return 
+		if (fn:ends-with($p,'/')) then
+			let $luris:=$uris!substring-after(.,concat($path,$p))!(if (contains(.,'/')) then concat(substring-before(.,'/'),'/') else .)
+			let $count:=fn:count(fn:distinct-values($luris))
+			let $priv:=fs-api:find-uri-privilege(concat($path,$p))
+			return object-node{"owner":$me,"readable": true(), "writable": $priv,"ident":concat('/fs/',$dbname,'/content',$vpath,$p),"count":$count,"mime": "application/vnd.pigshell.dir","name":substring-before($p,'/'),
+				"mtime":0,"size":0}
+		else
+			let $uri:=concat($path,$p)
+			let $doc:=doc($uri)
+			let $ident:=concat('/fs/',$dbname,'/content',$vpath,$p)
+			let $capabilities:=fs-api:amped-capabilities($uri,$roles)
+			return if ($doc/es:entity) then 
+				fs-api:entity-dir($doc/es:entity,$uri,$ident,$capabilities,$dbname,$me)
+			else
+			let $lm:=fs-api:amped-last-modified($uri,$capabilities)
+			let $size:=if ($doc/binary()) then xdmp:binary-size($doc/binary()) else string-length(xdmp:quote($doc,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
+			let $mime0:=xdmp:uri-content-type($uri)
+			let $mime:=if ($mime0='application/x-unknown-content-type') then if ($doc/text()) then 'text/plain' else if ($doc/object-node()) then 'application/json' else if ($doc/*) then 'text/xml' else if ($doc/binary()) then 'application/octet-stream' else $mime0 else $mime0 
+			return object-node{"owner":$me,"_hidden":not($capabilities='read'),"executable":$capabilities='execute',"readable": $capabilities='read', "writable": $capabilities='update',"uri":$uri,"ident":$ident,"mime": $mime,"name":$p,
+				"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},"size":$size}
+	}
+};
+
+declare function fs-api:collections($path,$dbname) as object-node()* {
+	let $vpath:=fn:replace($path,'//','/')
+	let $uris:=cts:collection-match(concat($path,'*'))
+	let $uris2:=if ($path='/') then cts:collection-match('http://*') else ()
+	let $paths:=($uris!substring-after(.,$path)!concat(if (contains(.,'/')) then substring-before(.,'/') else .,'/'),
+		$uris2!substring-after(.,"http://")!concat(if (contains(.,'/')) then substring-before(.,'/') else .,'/')!concat('http:/',.))
+	let $user:=xdmp:get-request-field('user')
+	let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
+	return 
+		for $p in fn:distinct-values($paths) return 
+			let $luris:=$uris!substring-after(.,concat($path,$p))!concat(if (contains(.,'/')) then substring-before(.,'/') else .,'/')
+			let $count:=fn:count(fn:distinct-values($luris))
+			return object-node{
+					"owner":$me,
+					"readable": true(), 
+					"writable": false(),
+					"ident":concat('/fs/',$dbname,'/collections',$vpath,$p),
+					"count":$count,"mime": 
+					"application/vnd.pigshell.dir",
+					"name":substring-before($p,'/'),
+					"mtime":0,"size":0
 			}
 };
 
-declare function fs-api:dir($path,$dbname,$ident,$roles,$stat) {
+declare function fs-api:collection($path,$dbname,$roles,$stat) as object-node() {
+	let $user:=xdmp:get-request-field('user')
+	let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
+	return if ($stat) then object-node {
+		"name":if ($path='/') then $dbname else fn:tokenize($path,'/')[.!=''][last()],
+		"ident":concat('/fs/',$dbname,'/collections',$path),
+		"mime":'application/vnd.pigshell.dir',
+		"readable":true(),
+		"writable":false(),
+		"owner":$me
+	}
+	else
+	let $coll1:=cts:collection-match($path)
+	let $coll:=if (fn:empty($coll1) and ends-with($path,'/')) then cts:collection-match(substring($path,1,string-length($path)-1)) else $coll1
+	let $files:=if ($coll) then
+		cts:uris((),"document",cts:collection-query($coll))
+	else ()
+	return object-node {
+		"name":if ($path='/') then $dbname else fn:tokenize($path,'/')[.!=''][last()],
+		"ident":concat('/fs/',$dbname,'/collections',$path),
+		"mime":'application/vnd.pigshell.dir',
+		"readable":true(),
+		"writable":false(),
+		"owner":$me,
+		"files":array-node {
+			fs-api:collections($path,$dbname),
+			for $uri in $files 
+				let $doc:=doc($uri)
+				let $capabilities:=fs-api:amped-capabilities($uri,$roles)
+				let $lm:=fs-api:amped-last-modified($uri,$capabilities)
+				let $size:=if ($doc/binary()) then xdmp:binary-size($doc/binary()) else string-length(xdmp:quote($doc,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
+				let $mime0:=xdmp:uri-content-type($uri)
+				let $mime:=if ($mime0='application/x-unknown-content-type') then if ($doc/text()) then 'text/plain' else if ($doc/object-node()) then 'application/json' else if ($doc/*) then 'text/xml' else if ($doc/binary()) then 'application/octet-stream' else $mime0 else $mime0 
+				return object-node {
+					"mime":if ($doc/es:entity) then 'application/vnd.pigshell.dir' else $mime,
+					"uri":$uri,
+					"name":concat(xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'),
+					(:"ident":concat('/fs/',$dbname,'/collections',$coll,if (ends-with($coll,'/')) then () else '/',xdmp:integer-to-hex(xdmp:hash64($uri)),'.href',if ($doc/es:entity) then '/' else ()), :)
+					"ident":concat('/fs/',$dbname,'/content',$uri,if ($doc/es:entity) then '/' else ()),
+					"readable":true(),
+					"writable":false(),
+					"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
+					"size":$size,
+					"owner":$me
+				}
+		}
+	}
+};
+
+
+declare function fs-api:dir($path,$dbname,$ident,$roles,$stat) as object-node() {
 	if (not(fn:ends-with($path,'/'))) then fn:error(xs:QName('error')) else
 	let $user:=xdmp:get-request-field('user')
 	let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
@@ -270,10 +344,11 @@ declare function fs-api:dir($path,$dbname,$ident,$roles,$stat) {
 			"readable":$fcapabilities='read',
 			"writable":$fcapabilities=('update','insert','delete'),
 			"owner":$me,
-			"files":fs-api:files($path,$dbname,$ident,$roles)
+			"files":fs-api:files($path,$dbname,$roles)
 		}
 	else fs-api:entity-dir($ent/es:entity,base-uri($ent),$ident,$fcapabilities,$dbname,$me)
 };
+
 
 declare function fs-api:fieldlistfile($fieldname,$dbname) as object-node()* {
 	let $size:=sum(cts:field-values($fieldname)!string-length(.)+1)
@@ -303,9 +378,12 @@ declare private function remove-end-slash($s as xs:string) as xs:string {
 
 declare function fs-api:main() {
 
+try{
 let $path:=xdmp:get-request-field('path')
 let $op:=xdmp:get-request-field('op')
 let $docpath:=if (starts-with($path,'/content')) then substring-after($path,'/content') else ()
+let $collpath:=if (starts-with($path,'/collections')) then substring-after($path,'/collections') else ()
+let $collpath2:=if (ends-with($collpath,'/')) then substring($collpath,1,string-length($collpath)-1) else $collpath
 let $fieldpath:=if (starts-with($path,'/fields')) then substring-after($path,'/fields') else ()
 let $fieldname:=substring-after($fieldpath,'/')!(if (contains(.,'/')) then substring-before(.,'/') else .)
 let $fieldvalue:=substring-after($fieldpath,concat($fieldname,'/values/'))!(if (contains(.,'/')) then substring-before(.,'/') else .)
@@ -317,8 +395,14 @@ let $ident:=concat('/fs/',$dbname,'/content',$docpath)
 let $roles:=fs-api:amped-roles()
 let $user:=xdmp:get-request-field('user')
 let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
+let $ref:=if (fn:matches($collpath2,'/[0-9a-f]+[.]href?$')) then 
+	let $path2:=functx:substring-before-last($collpath2,'/')
+	let $hash:=xdmp:hex-to-integer(substring-before(functx:substring-after-last($collpath2,'/'),'.'))
+	return cts:uris((),"document",cts:collection-query(($path2,concat($path2,'/'))))[xdmp:hash64(.)=$hash]
+else ()
 let $mapped-hpath:=
-	if (fn:ends-with($hpath,'/entity.xml') and fn:exists(doc(functx:substring-before-last($hpath,'/entity.xml'))))
+	if ($ref) then $ref
+	else if (fn:ends-with($hpath,'/entity.xml') and fn:exists(doc(functx:substring-before-last($hpath,'/entity.xml'))))
 		then substring-before($hpath,'/entity.xml')
 	else if (fn:contains($hpath,'/ctl/') and fn:exists(doc(functx:substring-before-last($hpath,'/ctl/'))))
 		then substring-before($hpath,'/ctl/')
@@ -328,12 +412,17 @@ let $mapped-hpath:=
 let $_:=if (fn:empty($user)) then ()
 	else xdmp:login($user) :)
 
-return try{
+		let $_:=xdmp:add-response-header('X-ref',$ref)
+		let $_:=xdmp:add-response-header('X-mapped',$mapped-hpath)
+
+return 
 if ($method=('GET','HEAD','OPTIONS')) then
-if (fn:empty($path)) then
+if ($collpath and not($ref)) then
+	fs-api:collection($collpath,$dbname,$roles,$op='stat')
+else if (fn:empty($path)) then
 let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.dir')
 return fs-api:amped-list-databases()
-else if (fn:empty($docpath) and fn:empty($fieldpath)) then
+else if (fn:empty($docpath) and fn:empty($fieldpath) and fn:empty($collpath)) then
 	let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.dir')
 	return object-node {
 			"name":$dbname,
@@ -351,6 +440,14 @@ else if (fn:empty($docpath) and fn:empty($fieldpath)) then
 					"writable":true(),
 					"owner":$me
 				},
+				if ((try{cts:count-aggregate(cts:collection-reference())}catch($ex){0})!=0) then object-node {
+					"mime":'application/vnd.pigshell.dir',
+					"name":"collections",
+					"ident":concat('/fs/',$dbname,'/collections/'),
+					"readable":true(),
+					"writable":true(),
+					"owner":$me
+					} else (),
 				let $f:=fs-api:amped-list-fields()
 				return if ($f/files/*) then object-node {
 					"mime":'application/vnd.pigshell.dir',
@@ -456,7 +553,8 @@ else if ($fieldvalue) then
 				"mime":if ($doc/es:entity) then 'application/vnd.pigshell.dir' else $mime,
 				"uri":$uri,
 				"name":concat(xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'),
-				"ident":concat('/fs/',$dbname,'/fields/',$fieldname,'/values/',$fieldvalue,'/',xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'),
+			(:	"ident":concat('/fs/',$dbname,'/fields/',$fieldname,'/values/',$fieldvalue,'/',xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'), :)
+				"ident":concat('/fs/',$dbname,'/content',$uri,if ($doc/es:entity) then '/' else ()),
 				"readable":true(),
 				"writable":false(),
 				"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
@@ -473,6 +571,8 @@ else if (not(fn:ends-with($mapped-hpath,'/')) and fs-api:amped-uri-match($mapped
 	else
 	if ($doc/es:entity and $hpath=$mapped-hpath) then
 		fs-api:entity-dir($doc/es:entity,$mapped-hpath,$ident,fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
+	else if ($doc/es:entity and $ref=$mapped-hpath) then
+		fs-api:entity-dir($doc/es:entity,$mapped-hpath,concat('/fs/',$dbname,'/content',$ref,'/'),fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
 	else if ($doc/es:entity and ends-with($hpath,'/ctl/')) then
 		fs-api:entity-ctl-dir($doc/es:entity,$mapped-hpath,$ident,fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
 	else if ($doc/es:entity and contains($hpath,'/ctl/')) then
