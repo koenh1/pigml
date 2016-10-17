@@ -30,7 +30,7 @@
 					<match-security-role any-of="example-sender"/>
 				</action>
 			</actions>
-			<state-machine name="sent-state" initial-state="unsent" error-state="draft">
+			<work-flow name="sent-state" initial-state="unsent" error-state="draft">
 				<state name="unsent">
 					<event action="send">
 						<guard state="ready"/>
@@ -38,8 +38,8 @@
 					</event>
 				</state>
 				<state name="sent"></state>
-			</state-machine>
-			<state-machine name="message-state" initial-state="incomplete" error-state="incomplete">
+			</work-flow>
+			<work-flow name="message-state" initial-state="incomplete" error-state="incomplete">
 				<state name="incomplete">
 					<event action="add-receiver">
 						<guard invert="true" state="sent"/>
@@ -73,7 +73,7 @@
 				</state>
 				<state name="final">
 				</state>
-			</state-machine>
+			</work-flow>
 		</entity-type>
 	</entities>
 </entity-schema>

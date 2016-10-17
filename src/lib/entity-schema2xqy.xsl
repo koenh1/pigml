@@ -111,33 +111,33 @@ declare private function ent:update-states($state as map:map,$newstates as xs:st
 	let $_:=for $s in $newstates
 	return switch($s)
 	<xsl:for-each select=".//x:state">
-	case '<xsl:value-of select="@name"/>' return map:put($state,'<xsl:value-of select="ancestor::x:state-machine/@name"/>',$s)
+	case '<xsl:value-of select="@name"/>' return map:put($state,'<xsl:value-of select="ancestor::x:work-flow/@name"/>',$s)
 	</xsl:for-each>
 	default return ()
 	return $state
 };
 declare private function ent:valid-events-impl($states as map:map) as xs:string* {
-	<xsl:for-each select="x:state-machine">
+	<xsl:for-each select="x:work-flow">
 		let $<xsl:value-of select="@name"/>:=map:get($states,'<xsl:value-of select="@name"/>')
 	</xsl:for-each>
-	return (<xsl:apply-templates select="x:state-machine" mode="switch-state"/>)
+	return (<xsl:apply-templates select="x:work-flow" mode="switch-state"/>)
 };
 declare private function ent:valid-states-impl($states as map:map,$event as xs:string) as xs:string* {
-	<xsl:for-each select="x:state-machine">
+	<xsl:for-each select="x:work-flow">
 		let $<xsl:value-of select="@name"/>:=map:get($states,'<xsl:value-of select="@name"/>')
 	</xsl:for-each>
-	return (<xsl:apply-templates select="x:state-machine" mode="switch-state2"/>)
+	return (<xsl:apply-templates select="x:work-flow" mode="switch-state2"/>)
 };
 declare private function ent:assert-states($states as map:map) as map:map {
-	<xsl:for-each select="x:state-machine">
+	<xsl:for-each select="x:work-flow">
 		let $<xsl:value-of select="@name"/>:=map:get($states,'<xsl:value-of select="@name"/>')
 	</xsl:for-each>
-	let $_:=(<xsl:apply-templates select="x:state-machine" mode="switch-state3"/>)
+	let $_:=(<xsl:apply-templates select="x:work-flow" mode="switch-state3"/>)
 	return $states
 };
 </xsl:template>
 
-<xsl:template match="x:state-machine" mode="switch-state">
+<xsl:template match="x:work-flow" mode="switch-state">
 	<xsl:if test="position()!=1">,</xsl:if>
 	switch($<xsl:value-of select="@name"/>)
 	<xsl:for-each select="x:state">
@@ -146,7 +146,7 @@ declare private function ent:assert-states($states as map:map) as map:map {
 	default return ent:error('invalid-state','<xsl:value-of select="@name"/> has invalid state '||$<xsl:value-of select="@name"/>)
 </xsl:template>
 
-<xsl:template match="x:state-machine" mode="switch-state2">
+<xsl:template match="x:work-flow" mode="switch-state2">
 	<xsl:if test="position()!=1">,</xsl:if>
 	switch($<xsl:value-of select="@name"/>)
 	<xsl:for-each select="x:state">
@@ -158,7 +158,7 @@ declare private function ent:assert-states($states as map:map) as map:map {
 						case '<xsl:value-of select="@action"/>' return (
 						<xsl:choose>
 							<xsl:when test="x:target"><xsl:apply-templates select="x:target"/></xsl:when>
-							<xsl:otherwise><xsl:for-each select="ancestor::x:state-machine//x:state">
+							<xsl:otherwise><xsl:for-each select="ancestor::x:work-flow//x:state">
 								<xsl:if test="position()!=1">,</xsl:if>
 								'<xsl:value-of select="@name"/>'
 							</xsl:for-each></xsl:otherwise>
@@ -166,7 +166,7 @@ declare private function ent:assert-states($states as map:map) as map:map {
 					</xsl:for-each>
 					default return ()
 				</xsl:when>
-				<xsl:otherwise><xsl:for-each select="ancestor::x:state-machine//x:state">
+				<xsl:otherwise><xsl:for-each select="ancestor::x:work-flow//x:state">
 					<xsl:if test="position()!=1">,</xsl:if>
 					'<xsl:value-of select="@name"/>'
 				</xsl:for-each></xsl:otherwise>
@@ -176,7 +176,7 @@ declare private function ent:assert-states($states as map:map) as map:map {
 	default return ent:error('invalid-state','<xsl:value-of select="@name"/> has invalid state '||$<xsl:value-of select="@name"/>)
 </xsl:template>
 
-<xsl:template match="x:state-machine" mode="switch-state3">
+<xsl:template match="x:work-flow" mode="switch-state3">
 	<xsl:if test="position()!=1">,</xsl:if>
 	switch($<xsl:value-of select="@name"/>)
 	<xsl:for-each select="x:state">
@@ -194,7 +194,7 @@ declare private function ent:assert-states($states as map:map) as map:map {
 	<xsl:if test="fn:position()!=1">,</xsl:if>
 	<xsl:call-template name="guards">
 		<xsl:with-param name="guards" select="x:guard"/>
-		<xsl:with-param name="sm" select="ancestor::x:state-machine"/>
+		<xsl:with-param name="sm" select="ancestor::x:work-flow"/>
 	</xsl:call-template>
 	<xsl:variable name="action" select="key('action',@action)"/>
 	<xsl:for-each select="$action/x:match-security-role">
@@ -211,11 +211,11 @@ declare private function ent:assert-states($states as map:map) as map:map {
 	<xsl:param name="guards"/>
 	<xsl:param name="sm"/>
 	<xsl:variable name="x">
-	<xsl:for-each select="ancestor::x:entity-type/x:state-machine">
+	<xsl:for-each select="ancestor::x:entity-type/x:work-flow">
 		<xsl:variable name="sm2" select="."/>
 		<xsl:variable name="t">
 			<xsl:call-template name="guards2">
-				<xsl:with-param name="guards" select="$guards[key('state',@state)[ancestor::x:state-machine/@name=$sm2/@name]]"/>
+				<xsl:with-param name="guards" select="$guards[key('state',@state)[ancestor::x:work-flow/@name=$sm2/@name]]"/>
 				<xsl:with-param name="sm" select="$sm2"/>
 			</xsl:call-template>
 		</xsl:variable>
@@ -245,7 +245,7 @@ declare function ent:<xsl:value-of select="@name"/>($uri as xs:string,<xsl:apply
     let $triples as map:map:=map:new()
     let $attachments as map:map:=map:new()
     let $states:=map:new((
-			<xsl:for-each select="ancestor::x:entity-type//x:state-machine"><xsl:if test="position()!=1">,</xsl:if>
+			<xsl:for-each select="ancestor::x:entity-type//x:work-flow"><xsl:if test="position()!=1">,</xsl:if>
 				map:entry('<xsl:value-of select="@name"/>','<xsl:value-of select="@initial-state"/>')
 			</xsl:for-each>
 		))

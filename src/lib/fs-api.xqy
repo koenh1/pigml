@@ -248,11 +248,11 @@ declare function fs-api:files($path,$dbname,$roles) as array-node() {
 };
 
 declare function fs-api:collections($path,$dbname) as object-node()* {
-	let $vpath:=fn:replace($path,'//','/')
+	let $vpath:=fn:replace($path,'//','/')!(if (starts-with(.,'/')) then . else concat('/',.))
 	let $uris:=cts:collection-match(concat($path,'*'))
 	let $uris2:=if ($path='/') then cts:collection-match('http://*') else ()
 	let $paths:=($uris!substring-after(.,$path)!concat(if (contains(.,'/')) then substring-before(.,'/') else .,'/'),
-		$uris2!substring-after(.,"http://")!concat(if (contains(.,'/')) then substring-before(.,'/') else .,'/')!concat('http:/',.))
+		if ($uris2) then 'http:/' else ())
 	let $user:=xdmp:get-request-field('user')
 	let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
 	return 
@@ -274,6 +274,7 @@ declare function fs-api:collections($path,$dbname) as object-node()* {
 declare function fs-api:collection($path,$dbname,$roles,$stat) as object-node() {
 	let $user:=xdmp:get-request-field('user')
 	let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
+	let $rpath:=replace($path,'^/http:/','http://')
 	return if ($stat) then object-node {
 		"name":if ($path='/') then $dbname else fn:tokenize($path,'/')[.!=''][last()],
 		"ident":concat('/fs/',$dbname,'/collections',$path),
@@ -283,8 +284,8 @@ declare function fs-api:collection($path,$dbname,$roles,$stat) as object-node() 
 		"owner":$me
 	}
 	else
-	let $coll1:=cts:collection-match($path)
-	let $coll:=if (fn:empty($coll1) and ends-with($path,'/')) then cts:collection-match(substring($path,1,string-length($path)-1)) else $coll1
+	let $coll1:=cts:collection-match($rpath)
+	let $coll:=if (fn:empty($coll1) and ends-with($rpath,'/')) then cts:collection-match(substring($rpath,1,string-length($rpath)-1)) else $coll1
 	let $files:=if ($coll) then
 		cts:uris((),"document",cts:collection-query($coll))
 	else ()
@@ -296,7 +297,7 @@ declare function fs-api:collection($path,$dbname,$roles,$stat) as object-node() 
 		"writable":false(),
 		"owner":$me,
 		"files":array-node {
-			fs-api:collections($path,$dbname),
+			fs-api:collections(replace($path,'^/http:/','http://'),$dbname),
 			for $uri in $files 
 				let $doc:=doc($uri)
 				let $capabilities:=fs-api:amped-capabilities($uri,$roles)
@@ -397,8 +398,9 @@ let $user:=xdmp:get-request-field('user')
 let $me:=if (fn:empty($user)) then xdmp:get-current-user() else $user
 let $ref:=if (fn:matches($collpath2,'/[0-9a-f]+[.]href?$')) then 
 	let $path2:=functx:substring-before-last($collpath2,'/')
+	let $rpath:=replace($path2,'^/http:/','http://')
 	let $hash:=xdmp:hex-to-integer(substring-before(functx:substring-after-last($collpath2,'/'),'.'))
-	return cts:uris((),"document",cts:collection-query(($path2,concat($path2,'/'))))[xdmp:hash64(.)=$hash]
+	return cts:uris((),"document",cts:collection-query(($rpath,concat($rpath,'/'))))[xdmp:hash64(.)=$hash]
 else ()
 let $mapped-hpath:=
 	if ($ref) then $ref
@@ -407,10 +409,6 @@ let $mapped-hpath:=
 	else if (fn:contains($hpath,'/ctl/') and fn:exists(doc(functx:substring-before-last($hpath,'/ctl/'))))
 		then substring-before($hpath,'/ctl/')
 	else $hpath
-
-(: let $user:=xdmp:get-request-field("user")
-let $_:=if (fn:empty($user)) then ()
-	else xdmp:login($user) :)
 
 		let $_:=xdmp:add-response-header('X-ref',$ref)
 		let $_:=xdmp:add-response-header('X-mapped',$mapped-hpath)
