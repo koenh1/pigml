@@ -1,35 +1,46 @@
-<es:model xmlns:es="http://marklogic.com/entity-services">
-  <es:info>
-      <es:title>Message</es:title>
-      <es:version>0.0.4</es:version>
-      <es:base-uri>http://marklogic.com/entity-services/test</es:base-uri>
-      <es:description>A version of Order that contains OrderDetails within an array, which will change the cardinality assumptions for the relationship of Order to OrderDetails.</es:description>
-  </es:info>
-  <es:definitions>
-    <Message>
-        <es:properties>
-            <id>
-                <es:datatype>string</es:datatype>
-            </id>
-            <subject>
-                <es:datatype>string</es:datatype>
-            </subject>
-            <sender>
-                <es:datatype>string</es:datatype>
-            </sender>
-            <sent>
-                <es:datatype>dateTime</es:datatype>
-            </send>
-            <receiver>
-                <es:datatype>array</es:datatype>
-                <es:items>
-                  <es:datatype>string</es:datatype>
-                </es:items>
-            </receiver>
-        </es:properties>
-        <es:primary-key>id</es:primary-key>
-        <es:required>id</es:required>
-        <es:required>sender</es:required>
-    </Message>
-  </es:definitions>
-</es:model>
+<work-flows xmlns="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1 file:///C:/wkb/git/pigml/schemas/wkbe-workflows-schema.xsd">
+	<work-flow name="sent-state" initial-state="unsent" error-state="unsent">
+		<state name="unsent">
+			<event action="send">
+				<guard state="ready"/>
+				<target state="sent"/>
+			</event>
+		</state>
+		<state name="sent"/>
+	</work-flow>
+	<work-flow name="message-state" initial-state="incomplete" error-state="incomplete">
+		<state name="incomplete">
+			<event action="add-receiver" argument-type="element(receiver)">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+				<target state="incomplete"/>
+			</event>
+			<event action="set-subject" argument-type="string">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+				<target state="incomplete"/>
+			</event>
+			<event action="add-message">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+				<target state="incomplete"/>
+			</event>
+		</state>
+		<state name="ready">
+			<event action="add-receiver">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+			</event>
+			<event action="set-subject">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+			</event>
+			<event action="add-message">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+			</event>
+		</state>
+		<state name="final">
+				</state>
+	</work-flow>
+</work-flows>
