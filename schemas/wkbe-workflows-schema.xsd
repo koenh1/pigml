@@ -4,10 +4,10 @@
 	<xs:element name="event">
 		<xs:complexType>
 			<xs:sequence>
-				<xs:element ref="s:guard" maxOccurs="unbounded" minOccurs="0"/>
+				<xs:element ref="s:guard" minOccurs="0" maxOccurs="unbounded"/>
 				<xs:element ref="s:target" maxOccurs="unbounded"/>
 			</xs:sequence>
-			<xs:attribute name="action" use="required" type="xs:Name"/>
+			<xs:attribute name="action" type="xs:Name" use="required"/>
 			<xs:attribute name="argument-type" use="optional">
 				<xs:simpleType>
 					<xs:union>
@@ -63,7 +63,7 @@
 	</xs:element>
 	<xs:element name="guard">
 		<xs:complexType>
-			<xs:attribute name="state" use="required" type="xs:Name"/>
+			<xs:attribute name="state" type="xs:Name" use="required"/>
 			<xs:attribute name="invert" type="xs:boolean" use="optional"/>
 		</xs:complexType>
 	</xs:element>
@@ -72,22 +72,22 @@
 			<xs:sequence>
 				<xs:element ref="s:event" minOccurs="0" maxOccurs="unbounded"/>
 			</xs:sequence>
-			<xs:attribute name="name" use="required" type="xs:Name"/>
+			<xs:attribute name="name" type="xs:Name" use="required"/>
 		</xs:complexType>
 	</xs:element>
 	<xs:element name="target">
 		<xs:complexType>
-			<xs:attribute name="state" use="required" type="xs:Name"/>
+			<xs:attribute name="state" type="xs:Name" use="required"/>
 		</xs:complexType>
 	</xs:element>
 	<xs:element name="work-flow">
 		<xs:complexType>
 			<xs:sequence>
-				<xs:element ref="s:state" maxOccurs="unbounded" minOccurs="1"/>
+				<xs:element ref="s:state" minOccurs="1" maxOccurs="unbounded"/>
 			</xs:sequence>
-			<xs:attribute name="name" use="required" type="xs:Name"/>
-			<xs:attribute name="error-state" use="required" type="xs:Name"/>
-			<xs:attribute name="initial-state" use="required" type="xs:Name"/>
+			<xs:attribute name="name" type="xs:Name" use="required"/>
+			<xs:attribute name="error-state" type="xs:Name" use="required"/>
+			<xs:attribute name="initial-state" type="xs:Name" use="required"/>
 		</xs:complexType>
 		<xs:key name="state-name">
 			<xs:selector xpath=".//s:state"/>
@@ -109,9 +109,10 @@
 	<xs:element name="work-flows">
 		<xs:complexType>
 			<xs:sequence>
-				<xs:element ref="s:work-flow" maxOccurs="unbounded" minOccurs="1"/>
+				<xs:element ref="s:work-flow" minOccurs="1" maxOccurs="unbounded"/>
 			</xs:sequence>
-		</xs:complexType>
+			<xs:attribute name="model" use="required" type="xs:anyURI"/>
+		</xs:complexType> 
 		<xs:key name="workflow-names">
 			<xs:selector xpath=".//s:work-flow"/>
 			<xs:field xpath="@name"/>

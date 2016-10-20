@@ -1,0 +1,47 @@
+<work-flows xmlns="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1 file:///C:/wkb/git/pigml/schemas/wkbe-workflows-schema.xsd"
+model="message-model.xml">
+	<work-flow name="sent-state" initial-state="unsent" error-state="unsent">
+		<state name="unsent">
+			<event action="send">
+				<guard state="ready"/>
+				<target state="sent"/>
+			</event>
+		</state>
+		<state name="sent"/>
+	</work-flow>
+	<work-flow name="message-state" initial-state="incomplete" error-state="incomplete">
+		<state name="incomplete">
+			<event action="add-receiver" argument-type="element(address)">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+				<target state="incomplete"/>
+			</event>
+			<event action="set-subject" argument-type="string">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+				<target state="incomplete"/>
+			</event>
+			<event action="add-message">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+				<target state="incomplete"/>
+			</event>
+		</state>
+		<state name="ready">
+			<event action="add-receiver" argument-type="element(address)">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+			</event>
+			<event action="set-subject" argument-type="string">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+			</event>
+			<event action="add-message">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+			</event>
+		</state>
+		<state name="final">
+				</state>
+	</work-flow>
+</work-flows>

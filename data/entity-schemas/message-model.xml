@@ -1,0 +1,35 @@
+<es:model xmlns:es="http://marklogic.com/entity-services">
+  <es:info>
+      <es:title>Message</es:title>
+      <es:version>0.0.4</es:version>
+      <es:base-uri>http://marklogic.com/entity-services/test</es:base-uri>
+      <es:description>A version of Order that contains OrderDetails within an array, which will change the cardinality assumptions for the relationship of Order to OrderDetails.</es:description>
+  </es:info>
+  <es:definitions>
+    <Message>
+        <es:properties>
+            <id>
+                <es:datatype>string</es:datatype>
+            </id>
+            <subject>
+                <es:datatype>string</es:datatype>
+            </subject>
+            <sender>
+                <es:datatype>string</es:datatype>
+            </sender>
+            <sent>
+                <es:datatype>dateTime</es:datatype>
+            </sent>
+            <receiver>
+                <es:datatype>array</es:datatype>
+                <es:items>
+                  <es:datatype>string</es:datatype>
+                </es:items>
+            </receiver>
+        </es:properties>
+        <es:primary-key>id</es:primary-key>
+        <es:required>id</es:required>
+        <es:required>sender</es:required>
+    </Message>
+  </es:definitions>
+</es:model>
