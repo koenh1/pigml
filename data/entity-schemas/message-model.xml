@@ -17,6 +17,12 @@
             <sender>
                 <es:datatype>string</es:datatype>
             </sender>
+            <message>
+                <es:datatype>array</es:datatype>
+                <es:items>
+                  <es:datatype>string</es:datatype>
+                </es:items>
+            </message>
             <sent>
                 <es:datatype>dateTime</es:datatype>
             </sent>
@@ -26,10 +32,23 @@
                   <es:datatype>string</es:datatype>
                 </es:items>
             </receiver>
+            <attachments>
+                <es:datatype>array</es:datatype>
+                <es:items>
+                  <es:ref>#/definitions/Attachment</es:ref>
+                </es:items>
+            </attachments>
         </es:properties>
         <es:primary-key>id</es:primary-key>
         <es:required>id</es:required>
         <es:required>sender</es:required>
     </Message>
+    <Attachment>
+        <es:properties>
+          <name><es:datatype>string</es:datatype></name>
+          <data><es:datatype>base64Binary</es:datatype></data>
+        </es:properties>
+        <es:primary-key>name</es:primary-key>
+    </Attachment>
   </es:definitions>
 </es:model>

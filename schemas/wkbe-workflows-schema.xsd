@@ -86,7 +86,6 @@
 				<xs:element ref="s:state" minOccurs="1" maxOccurs="unbounded"/>
 			</xs:sequence>
 			<xs:attribute name="name" type="xs:Name" use="required"/>
-			<xs:attribute name="error-state" type="xs:Name" use="required"/>
 			<xs:attribute name="initial-state" type="xs:Name" use="required"/>
 		</xs:complexType>
 		<xs:key name="state-name">
@@ -96,10 +95,6 @@
 		<xs:keyref name="initial-state-ref" refer="s:state-name">
 			<xs:selector xpath="."/>
 			<xs:field xpath="@initial-state"/>
-		</xs:keyref>
-		<xs:keyref name="error-state-ref" refer="s:state-name">
-			<xs:selector xpath="."/>
-			<xs:field xpath="@error-state"/>
 		</xs:keyref>
 		<xs:keyref name="state-ref" refer="s:state-name">
 			<xs:selector xpath=".//s:target"/>

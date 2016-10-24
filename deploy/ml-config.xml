@@ -194,7 +194,7 @@
         <field>
           <field-name>state</field-name>
           <field-path>
-            <path>//state:state/@name</path>
+            <path>//wkes:state/@state</path>
             <weight>1.0</weight>
           </field-path>
           <word-lexicons/>
@@ -309,8 +309,8 @@
 
       <path-namespaces>
         <path-namespace>
-          <prefix>state</prefix>
-          <namespace-uri>http://www.wolterskluwer.com/ns/appollo/state/1.0</namespace-uri>
+          <prefix>wkes</prefix>
+          <namespace-uri>http://www.wolterskluwer.com/schemas/appollo/entity/v1.1</namespace-uri>
         </path-namespace>
       </path-namespaces>
 

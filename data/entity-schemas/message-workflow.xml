@@ -1,15 +1,18 @@
 <work-flows xmlns="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1 file:///C:/wkb/git/pigml/schemas/wkbe-workflows-schema.xsd"
 model="message-model.xml">
-	<work-flow name="sent-state" initial-state="unsent" error-state="unsent">
+	<directory href="/messages/" depth="1"/>
+	<directory href="/entities/" depth="Infinity"/>
+	<import-module prefix="ex" namespace="http://www.wolterskluwer.com/ns/appollo/marklogic/entity/example" href="/lib/example.xqy"/>
+	<work-flow name="sent-state" initial-state="unsent">
 		<state name="unsent">
-			<event action="send">
+			<event action="send" async="true" retryable="true">
 				<guard state="ready"/>
 				<target state="sent"/>
 			</event>
 		</state>
 		<state name="sent"/>
 	</work-flow>
-	<work-flow name="message-state" initial-state="incomplete" error-state="incomplete">
+	<work-flow name="message-state" initial-state="incomplete">
 		<state name="incomplete">
 			<event action="add-receiver" argument-type="element(address)">
 				<guard invert="true" state="sent"/>
@@ -21,7 +24,12 @@ model="message-model.xml">
 				<target state="ready"/>
 				<target state="incomplete"/>
 			</event>
-			<event action="add-message">
+			<event action="add-message" argument-type="element(message)">
+				<guard invert="true" state="sent"/>
+				<target state="ready"/>
+				<target state="incomplete"/>
+			</event>
+			<event action="add-attachment" argument-type="base64Binary">
 				<guard invert="true" state="sent"/>
 				<target state="ready"/>
 				<target state="incomplete"/>
@@ -36,7 +44,7 @@ model="message-model.xml">
 				<guard invert="true" state="sent"/>
 				<target state="ready"/>
 			</event>
-			<event action="add-message">
+			<event action="add-message" argument-type="element(message)">
 				<guard invert="true" state="sent"/>
 				<target state="ready"/>
 			</event>

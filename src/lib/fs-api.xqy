@@ -5,53 +5,14 @@ module namespace fs-api="http://marklogic.com/lib/xquery/fs-api";
 import module namespace admin = "http://marklogic.com/xdmp/admin" at "/MarkLogic/admin.xqy";
 import module namespace sec="http://marklogic.com/xdmp/security" at "/MarkLogic/security.xqy";
 import module namespace functx   = "http://www.functx.com" at "/MarkLogic/functx/functx-1.0-nodoc-2007-01.xqy";
+import module namespace inst = "http://marklogic.com/entity-services-instance" at "/MarkLogic/entity-services/entity-services-instance.xqy";
 
 declare namespace fs="http://marklogic.com/xdmp/status/forest";
 declare namespace prop="http://marklogic.com/xdmp/property";
 declare namespace db="http://marklogic.com/xdmp/database";
-declare namespace wkes="http://www.wolterskluwer.com/schemas/appollo/entity/v1.0";
-declare namespace es="http://marklogic.com/entity-services";
+declare namespace es = "http://marklogic.com/entity-services"; 
 
-declare variable $fs-api:entities-path:='/entity-schemas/';
-
-declare function fs-api:compile() {
-	for $s in xdmp:directory($fs-api:entities-path)//wkes:entity-type
-	let $m:=xdmp:xslt-invoke('/lib/entity-schema2xqy.xsl',$s)
-	let $uri:=concat($s/ancestor::wkes:entity-schema/@at,$s/@name,'.xqy')
-	return ($uri,$m,xdmp:invoke-function(function(){xdmp:document-insert($uri,text{$m},(xdmp:permission("entity-role", "execute"),xdmp:permission("entity-role", "read")))},
-	  <options xmlns="xdmp:eval"><database>{xdmp:modules-database()}</database></options>))
-};
-
-declare function fs-api:resolve-entity($uri as xs:string) as xs:string* {
-	for $s in xdmp:directory($fs-api:entities-path)/wkes:entity-schema
-		for $et in $s/wkes:entities/wkes:entity-type[starts-with($uri,@directory)]
-			return if ($et/@depth='Infinity' or not(fn:contains(substring-after($uri,$et/@directory),'/'))) then (concat($s/@namespace,'#',$et/@name),concat($s/@at,$et/@name,'.xqy')) else ()
-};
-
-declare function fs-api:amped-get-entity-constructor($uri as xs:string) as function(*)* {
-	let $r:=fs-api:resolve-entity($uri)
-	return if (fn:empty($r)) then ()
-	else 
-	let $script:=fn:string-join(("import module namespace ent=""",$r[1],""" at """,$r[2],""";","(ent:generic-create-from-doc#2,ent:valid-events#1)"),"")
-	return xdmp:eval($script)
-};
-
-declare function fs-api:amped-get-entity-canonical($uri as xs:string) as function(*)* {
-	let $r:=fs-api:resolve-entity($uri)
-	return if (fn:empty($r)) then ()
-	else 
-	let $script:=fn:string-join(("import module namespace ent=""",$r[1],""" at """,$r[2],""";","(ent:canonical#1)"),"")
-	return xdmp:eval($script)
-};
-
-declare function fs-api:amped-get-entity-action($uri as xs:string,$action as xs:string,$args as xs:int) as function(*)* {
-	let $r:=fs-api:resolve-entity($uri)
-	return if (fn:empty($r)) then ()
-	else 
-	let $script:=fn:string-join(("import module namespace ent=""",$r[1],""" at """,$r[2],""";","(function-lookup(xs:QName('ent:",$action,"'),1),function-lookup(xs:QName('ent:",$action,"'),2))"),"")
-	return xdmp:eval($script)
-};
-
+import module namespace wkesi='http://www.wolterskluwer.com/schemas/appollo/entity/instance/v1.1' at '/lib/wkes-instance.xqy';
 
 declare function fs-api:amped-roles() as xs:unsignedLong* {
 	let $user:=xdmp:get-request-field('user')
@@ -152,7 +113,7 @@ return object-node{
 	}
 };
 
-declare function fs-api:entity-dir($ent as element(es:entity),$uri as xs:string,$ident as xs:string,$fcapabilities as xs:string*,$dbname as xs:string,$me as xs:string) as object-node() {
+declare function fs-api:entity-dir($ent as element(es:envelope),$uri as xs:string,$ident as xs:string,$fcapabilities as xs:string*,$dbname as xs:string,$me as xs:string) as object-node() {
 	let $lm:=fs-api:amped-last-modified($uri,$fcapabilities)
 	return object-node {
 			"name":fn:tokenize($uri,'/')[.!=''][last()],
@@ -176,12 +137,32 @@ declare function fs-api:entity-dir($ent as element(es:entity),$uri as xs:string,
 					"owner":$me
 				},
 				object-node {
+					"name":"envelope.xml",
+					"ident":concat($ident,'/envelope.xml'),
+					"mime":'text/xml',
+					"readable":$fcapabilities='read',
+					"writable":$fcapabilities=('update','insert','delete'),
+					"size":string-length(xdmp:quote($ent)),
+					"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
+					"owner":$me
+				},
+				object-node {
 					"name":"entity.xml",
 					"ident":concat($ident,'/entity.xml'),
 					"mime":'text/xml',
 					"readable":$fcapabilities='read',
 					"writable":$fcapabilities=('update','insert','delete'),
-					"size":string-length(xdmp:quote($ent)),
+					"size":string-length(xdmp:quote(wkesi:instance-xml-from-document(document{$ent}))),
+					"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
+					"owner":$me
+				},
+				object-node {
+					"name":"entity.json",
+					"ident":concat($ident,'/entity.json'),
+					"mime":'application/json',
+					"readable":$fcapabilities='read',
+					"writable":$fcapabilities=('update','insert','delete'),
+					"size":string-length(xdmp:quote(wkesi:instance-json-from-document(document{$ent}))),
 					"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
 					"owner":$me
 				}
@@ -189,7 +170,7 @@ declare function fs-api:entity-dir($ent as element(es:entity),$uri as xs:string,
 		}
 };
 
-declare function fs-api:entity-ctl-dir($ent as element(es:entity),$uri as xs:string,$ident as xs:string,$fcapabilities as xs:string*,$dbname as xs:string,$me as xs:string) as object-node() {
+declare function fs-api:entity-ctl-dir($ent as element(es:envelope),$uri as xs:string,$ident as xs:string,$fcapabilities as xs:string*,$dbname as xs:string,$me as xs:string) as object-node() {
 	let $lm:=fs-api:amped-last-modified($uri,$fcapabilities)
 	return object-node {
 			"name":'ctl',
@@ -201,7 +182,7 @@ declare function fs-api:entity-ctl-dir($ent as element(es:entity),$uri as xs:str
 			"test":"ok",
 			"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
 			"files":array-node {
-				let $valid-events:=fs-api:amped-get-entity-constructor($uri)[2]($ent)
+				let $valid-events:=wkesi:valid-events(document{$ent},$uri)
 				return for $event in $valid-events order by $event
 				return object-node {
 					"name":$event,
@@ -235,8 +216,8 @@ declare function fs-api:files($path,$dbname,$roles) as array-node() {
 			let $doc:=doc($uri)
 			let $ident:=concat('/fs/',$dbname,'/content',$vpath,$p)
 			let $capabilities:=fs-api:amped-capabilities($uri,$roles)
-			return if ($doc/es:entity) then 
-				fs-api:entity-dir($doc/es:entity,$uri,$ident,$capabilities,$dbname,$me)
+			return if ($doc/es:envelope) then 
+				fs-api:entity-dir($doc/es:envelope,$uri,$ident,$capabilities,$dbname,$me)
 			else
 			let $lm:=fs-api:amped-last-modified($uri,$capabilities)
 			let $size:=if ($doc/binary()) then xdmp:binary-size($doc/binary()) else string-length(xdmp:quote($doc,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
@@ -306,11 +287,11 @@ declare function fs-api:collection($path,$dbname,$roles,$stat) as object-node() 
 				let $mime0:=xdmp:uri-content-type($uri)
 				let $mime:=if ($mime0='application/x-unknown-content-type') then if ($doc/text()) then 'text/plain' else if ($doc/object-node()) then 'application/json' else if ($doc/*) then 'text/xml' else if ($doc/binary()) then 'application/octet-stream' else $mime0 else $mime0 
 				return object-node {
-					"mime":if ($doc/es:entity) then 'application/vnd.pigshell.dir' else $mime,
+					"mime":if ($doc/es:envelope) then 'application/vnd.pigshell.dir' else $mime,
 					"uri":$uri,
 					"name":concat(xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'),
-					(:"ident":concat('/fs/',$dbname,'/collections',$coll,if (ends-with($coll,'/')) then () else '/',xdmp:integer-to-hex(xdmp:hash64($uri)),'.href',if ($doc/es:entity) then '/' else ()), :)
-					"ident":concat('/fs/',$dbname,'/content',$uri,if ($doc/es:entity) then '/' else ()),
+					(:"ident":concat('/fs/',$dbname,'/collections',$coll,if (ends-with($coll,'/')) then () else '/',xdmp:integer-to-hex(xdmp:hash64($uri)),'.href',if ($doc/es:envelope) then '/' else ()), :)
+					"ident":concat('/fs/',$dbname,'/content',$uri,if ($doc/es:envelope) then '/' else ()),
 					"readable":true(),
 					"writable":false(),
 					"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
@@ -329,7 +310,7 @@ declare function fs-api:dir($path,$dbname,$ident,$roles,$stat) as object-node() 
 	let $furi:=if (string-length($path) gt 1) then substring($path,1,string-length($path)-1) else $path
 	let $fcapabilities:=fs-api:amped-capabilities($furi,$roles)
 	let $ent:=doc($furi)
-	return if (fn:empty($ent/es:entity))
+	return if (fn:empty($ent/es:envelope))
 	then if ($stat) then object-node {
 			"name":if ($path='/') then $dbname else fn:tokenize($path,'/')[.!=''][last()],
 			"ident":$ident,
@@ -347,7 +328,7 @@ declare function fs-api:dir($path,$dbname,$ident,$roles,$stat) as object-node() 
 			"owner":$me,
 			"files":fs-api:files($path,$dbname,$roles)
 		}
-	else fs-api:entity-dir($ent/es:entity,base-uri($ent),$ident,$fcapabilities,$dbname,$me)
+	else fs-api:entity-dir($ent/es:envelope,base-uri($ent),$ident,$fcapabilities,$dbname,$me)
 };
 
 
@@ -404,8 +385,12 @@ let $ref:=if (fn:matches($collpath2,'/[0-9a-f]+[.]href?$')) then
 else ()
 let $mapped-hpath:=
 	if ($ref) then $ref
+	else if (fn:ends-with($hpath,'/envelope.xml') and fn:exists(doc(functx:substring-before-last($hpath,'/envelope.xml'))))
+		then substring-before($hpath,'/envelope.xml')
 	else if (fn:ends-with($hpath,'/entity.xml') and fn:exists(doc(functx:substring-before-last($hpath,'/entity.xml'))))
 		then substring-before($hpath,'/entity.xml')
+	else if (fn:ends-with($hpath,'/entity.json') and fn:exists(doc(functx:substring-before-last($hpath,'/entity.json'))))
+		then substring-before($hpath,'/entity.json')
 	else if (fn:contains($hpath,'/ctl/') and fn:exists(doc(functx:substring-before-last($hpath,'/ctl/'))))
 		then substring-before($hpath,'/ctl/')
 	else $hpath
@@ -461,9 +446,9 @@ else if ($fieldpath=('','/')) then fs-api:amped-list-fields()
 else if ($fieldvalueuri) then 
 	let $uri:=cts:uris((),"document",cts:field-value-query($fieldname,$fieldvalue,"exact"))[xdmp:integer-to-hex(xdmp:hash64(.))=$fieldvalueuri]
 	let $doc:=doc($uri)
-	return if ($doc/es:entity) then 
+	return if ($doc/es:envelope) then 
 		let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.dir')
-		return fs-api:entity-dir($doc/es:entity,$uri,concat('/fs/',$dbname,'/content',$uri,'/'),fs-api:amped-capabilities($uri,$roles),$dbname,$me)
+		return fs-api:entity-dir($doc/es:envelope,$uri,concat('/fs/',$dbname,'/content',$uri,'/'),fs-api:amped-capabilities($uri,$roles),$dbname,$me)
 		else
 			let $_:=xdmp:add-response-header('Content-Type','text/plain')
 			return <a target="_blank" href="{xdmp:get-request-protocol()}://{xdmp:get-request-header("Host")}/fs/{$dbname}/content/{replace($uri,'^/','')}">{{{{name}}}}</a>
@@ -548,11 +533,11 @@ else if ($fieldvalue) then
 				let $mime0:=xdmp:uri-content-type($uri)
 				let $mime:=if ($mime0='application/x-unknown-content-type') then if ($doc/text()) then 'text/plain' else if ($doc/object-node()) then 'application/json' else if ($doc/*) then 'text/xml' else if ($doc/binary()) then 'application/octet-stream' else $mime0 else $mime0 
 			return object-node {
-				"mime":if ($doc/es:entity) then 'application/vnd.pigshell.dir' else $mime,
+				"mime":if ($doc/es:envelope) then 'application/vnd.pigshell.dir' else $mime,
 				"uri":$uri,
 				"name":concat(xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'),
 			(:	"ident":concat('/fs/',$dbname,'/fields/',$fieldname,'/values/',$fieldvalue,'/',xdmp:integer-to-hex(xdmp:hash64($uri)),'.href'), :)
-				"ident":concat('/fs/',$dbname,'/content',$uri,if ($doc/es:entity) then '/' else ()),
+				"ident":concat('/fs/',$dbname,'/content',$uri,if ($doc/es:envelope) then '/' else ()),
 				"readable":true(),
 				"writable":false(),
 				"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
@@ -567,13 +552,13 @@ else if (not(fn:ends-with($mapped-hpath,'/')) and fs-api:amped-uri-match($mapped
 		let $_:=xdmp:set-response-code(404,"not existant or nonreadable document "||$hpath)
 		return ()
 	else
-	if ($doc/es:entity and $hpath=$mapped-hpath) then
-		fs-api:entity-dir($doc/es:entity,$mapped-hpath,$ident,fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
-	else if ($doc/es:entity and $ref=$mapped-hpath) then
-		fs-api:entity-dir($doc/es:entity,$mapped-hpath,concat('/fs/',$dbname,'/content',$ref,'/'),fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
-	else if ($doc/es:entity and ends-with($hpath,'/ctl/')) then
-		fs-api:entity-ctl-dir($doc/es:entity,$mapped-hpath,$ident,fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
-	else if ($doc/es:entity and contains($hpath,'/ctl/')) then
+	if ($doc/es:envelope and $hpath=$mapped-hpath) then
+		fs-api:entity-dir($doc/es:envelope,$mapped-hpath,$ident,fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
+	else if ($doc/es:envelope and $ref=$mapped-hpath) then
+		fs-api:entity-dir($doc/es:envelope,$mapped-hpath,concat('/fs/',$dbname,'/content',$ref,'/'),fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
+	else if ($doc/es:envelope and ends-with($hpath,'/ctl/')) then
+		fs-api:entity-ctl-dir($doc/es:envelope,$mapped-hpath,$ident,fs-api:amped-capabilities($mapped-hpath,$roles),$dbname,$me)
+	else if ($doc/es:envelope and contains($hpath,'/ctl/')) then
 		let $_:=xdmp:add-response-header('Content-Type',"text/plain")
 		return ()
 	else
@@ -602,7 +587,15 @@ else if (not(fn:ends-with($mapped-hpath,'/')) and fs-api:amped-uri-match($mapped
 			}
 		else 
 		let $_:=xdmp:add-response-header('Content-Type',$mime)
-		return if ($doc/es:entity) then xdmp:quote($doc,<options xmlns="xdmp:quote"><indent-untyped>yes</indent-untyped></options>) else $doc
+		return if ($doc/es:envelope) then 
+			if (fn:ends-with($path,'/entity.xml')) then
+			wkesi:instance-xml-from-document($doc)
+			else
+			if (fn:ends-with($path,'/entity.json')) then
+			wkesi:instance-json-from-document($doc)
+			else
+			xdmp:quote($doc,<options xmlns="xdmp:quote"><indent-untyped>yes</indent-untyped></options>) 
+		else $doc
 else
 	let $_:=xdmp:add-response-header('Content-Type','application/vnd.pigshell.dir')
 	return fs-api:dir($hpath,$dbname,$ident,$roles,xdmp:get-request-field('op')='stat')
@@ -621,33 +614,27 @@ else if ($method='POST') then
 			return ()
 		else if (starts-with($uri,'/') or starts-with($uri,'http:/')) then
 			if (ends-with($hpath,'/ctl/')) then
-				let $ent as element(es:entity):=doc($mapped-hpath)/es:entity
-				let $action:=fs-api:amped-get-entity-action($mapped-hpath,$filename,2)
-				let $async:=xdmp:annotation($action,xs:QName("es:async"))
-				let $f:=
-					if (fn:function-arity($action)=1) then
-					function() {
-						let $data2 as element(es:entity):=$action($ent)
-						return xdmp:document-insert($mapped-hpath,$data2)
-					}
-					else
-					function() {
-						let $tp:=xdmp:function-parameter-type($action,2)
-						let $arg:=if (contains($tp,'element')) then xdmp:unquote($data0,(),"format-xml")/* else $data0
-						let $data2 as element(es:entity):=$action($ent,$arg)
-						return xdmp:document-insert($mapped-hpath,$data2)
-					}
-				let $_:=if ($async) then xdmp:spawn-function($f,<options xmlns="xdmp:eval">
-					  <transaction-mode>update-auto-commit</transaction-mode>
-					</options>) else $f()
+				let $_:=wkesi:invoke-event($mapped-hpath,$filename,xdmp:get-request-field("data"))
 				let $_:=xdmp:set-response-code(204,"no content")
 				return ()
-			else if ($mapped-hpath ne '/' and doc(remove-end-slash($mapped-hpath))/es:entity) then
+			else if ($mapped-hpath ne '/' and doc(remove-end-slash($mapped-hpath))/es:envelope) then
+				if ($filename='envelope.xml') then
+					let $ent:=xdmp:unquote($data0,'format-xml')/es:envelope
+					let $_:=xdmp:document-insert(remove-end-slash($mapped-hpath),$ent)
+					let $_:=xdmp:set-response-code(201,"Updated")
+					let $tm:=fn:current-dateTime()
+					return object-node {"owner":$me, "uri":remove-end-slash($mapped-hpath),"ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
+				else 
 				if ($filename='entity.xml') then
-					let $canonical as function(*):=fs-api:amped-get-entity-canonical(remove-end-slash($mapped-hpath))
-					let $ent:=xdmp:unquote($data0,'format-xml')/es:entity
-					let $nent:=$canonical($ent)
-					let $_:=xdmp:document-insert(remove-end-slash($mapped-hpath),$nent)
+					let $ent:=xdmp:unquote($data0,'format-xml')/es:envelope
+					(: TODO let $_:=xdmp:document-insert(remove-end-slash($mapped-hpath),$ent) :)
+					let $_:=xdmp:set-response-code(201,"Updated")
+					let $tm:=fn:current-dateTime()
+					return object-node {"owner":$me, "uri":remove-end-slash($mapped-hpath),"ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
+				else 
+				if ($filename='entity.json') then
+					let $ent:=xdmp:unquote($data0,'format-json')
+					(: TODO let $_:=xdmp:document-insert(remove-end-slash($mapped-hpath),$ent) :)
 					let $_:=xdmp:set-response-code(201,"Updated")
 					let $tm:=fn:current-dateTime()
 					return object-node {"owner":$me, "uri":remove-end-slash($mapped-hpath),"ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
@@ -655,21 +642,18 @@ else if ($method='POST') then
 					let $_:=xdmp:set-response-code(404,"unvalid path")
 					return ()					
 			else
-				let $constr:=fs-api:amped-get-entity-constructor($uri)
-				return if (fn:empty($constr)) then
+				if (wkesi:is-instance($uri)=false()) then
 						let $_:=xdmp:document-insert($uri,$data)
 						let $_:=xdmp:set-response-code(201,"Created")
 						let $tm:=fn:current-dateTime()
 						return object-node {"owner":$me, "uri":$uri,"ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
 					else 
-						let $data2:=$constr[1]($uri,$data)
-						let $_:=xdmp:document-insert($uri,$data2)
+						let $data2:=wkesi:create-instance($uri,$data,true())
 						let $_:=xdmp:set-response-code(201,"Created")
 						let $tm:=fn:current-dateTime()
 						return object-node {
 								"owner":$me,
 								"mime":"application/vnd.pigshell.dir",
-								"entity":fn:namespace-uri-from-QName(xdmp:function-name($constr[1])), 
 								"ident":concat('/fs/',$dbname,$uri),
 								"name":$filename,"readable":true(),
 								"writable":true(),
