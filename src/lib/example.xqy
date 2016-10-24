@@ -40,7 +40,7 @@ declare function ex:add-receiver($instance as map:map,$attachments as map:map,$t
 };
 
 declare function ex:add-attachment($instance as map:map,$attachments as map:map,$triples as map:map,$arg as xs:base64Binary) as xs:string* {
-	let $_:=map:put($instance,'attachments',array-with(map:get($instance,'attachments'),$arg))
+	let $_:=map:put($instance,'attachments',array-with(map:get($instance,'attachments'),json:object()!map-with(.,"$type","Attachment")!map-with(.,"data",$arg)!map-with(.,"name","attachment")))
 	return if (map:contains($instance,'subject') and map:contains($instance,'receiver')) then 'ready' else ()
 };
 

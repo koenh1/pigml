@@ -8,6 +8,7 @@
 				<xs:element ref="s:target" maxOccurs="unbounded"/>
 			</xs:sequence>
 			<xs:attribute name="action" type="xs:Name" use="required"/>
+			<xs:attribute name="async" type="xs:boolean" default="false"/>
 			<xs:attribute name="argument-type" use="optional">
 				<xs:simpleType>
 					<xs:union>
@@ -104,10 +105,12 @@
 	<xs:element name="work-flows">
 		<xs:complexType>
 			<xs:sequence>
+				<xs:element ref="s:directory" minOccurs="1" maxOccurs="unbounded"/>
+				<xs:element ref="s:import-module" minOccurs="0" maxOccurs="unbounded"/>
 				<xs:element ref="s:work-flow" minOccurs="1" maxOccurs="unbounded"/>
 			</xs:sequence>
-			<xs:attribute name="model" use="required" type="xs:anyURI"/>
-		</xs:complexType> 
+			<xs:attribute name="model" type="xs:anyURI" use="required"/>
+		</xs:complexType>
 		<xs:key name="workflow-names">
 			<xs:selector xpath=".//s:work-flow"/>
 			<xs:field xpath="@name"/>
@@ -120,5 +123,25 @@
 			<xs:selector xpath=".//s:guard"/>
 			<xs:field xpath="@state"/>
 		</xs:keyref>
+	</xs:element>
+	<xs:element name="import-module">
+		<xs:complexType>
+			<xs:attribute name="namespace" type="xs:anyURI" use="required"/>
+			<xs:attribute name="href" type="xs:anyURI" use="required"/>
+			<xs:attribute name="prefix" type="xs:Name" use="required"/>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="directory">
+		<xs:complexType>
+			<xs:attribute name="href" type="xs:anyURI" use="required"/>
+			<xs:attribute name="depth" use="required">
+				<xs:simpleType>
+					<xs:restriction base="xs:string">
+						<xs:enumeration value="1"/>
+						<xs:enumeration value="Infinity"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+		</xs:complexType>
 	</xs:element>
 </xs:schema>

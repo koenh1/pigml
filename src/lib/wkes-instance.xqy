@@ -34,11 +34,35 @@ declare function wkes-instance:valid-events($doc as document-node(),$uri as xs:s
 	return $f($doc)
 };
 
-declare function wkes-instance:instance-json-from-document($doc as document-node()) as object-node() {
-	inst:instance-json-from-document($doc)
+declare private function wkes-instance:remove-attachments($node as map:map) {
+  let $_:=map:delete($node,'$attachments')
+  let $_:=for $k in map:keys($node)
+  let $v:=map:get($node,$k)
+  return typeswitch($v)
+   case json:object+ return $v!wkes-instance:remove-attachments(.)
+   case json:array return
+        for $val in json:array-values($v)
+        return
+            if ($val instance of json:object)
+            then wkes-instance:remove-attachments($val)
+            else ()
+   default return()
+   return $node
 };
 
-declare function wkes-instance:instance-xml-from-document($doc as document-node()) as element()* {
+declare function wkes-instance:instance-json-from-document($uri as xs:string,$doc as document-node()) as map:map {
+	let $mod as element(module)?:=wkes-catalog:catalog($uri)
+	return if (fn:empty($mod)) then ()
+	else
+	let $script:=<code>
+	import module namespace m="{string($mod/@namespace)}" at "{string($mod/@at)}";
+	m:extract-instance#1
+	</code>/string()
+	let $f:=xdmp:eval($script)
+	return wkes-instance:remove-attachments($f($doc))
+};
+
+declare function wkes-instance:instance-xml-from-document($uri as xs:string,$doc as document-node()) as element()* {
 	inst:instance-xml-from-document($doc)
 };
 

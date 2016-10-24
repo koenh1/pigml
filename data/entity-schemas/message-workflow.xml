@@ -1,11 +1,10 @@
-<work-flows xmlns="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1 file:///C:/wkb/git/pigml/schemas/wkbe-workflows-schema.xsd"
-model="message-model.xml">
+<work-flows xmlns="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.wolterskluwer.com/schemas/appollo/entity/v1.1 file:///C:/wkb/git/pigml/schemas/wkbe-workflows-schema.xsd" model="message-model.xml">
 	<directory href="/messages/" depth="1"/>
 	<directory href="/entities/" depth="Infinity"/>
 	<import-module prefix="ex" namespace="http://www.wolterskluwer.com/ns/appollo/marklogic/entity/example" href="/lib/example.xqy"/>
 	<work-flow name="sent-state" initial-state="unsent">
 		<state name="unsent">
-			<event action="send" async="true" retryable="true">
+			<event action="send" async="true">
 				<guard state="ready"/>
 				<target state="sent"/>
 			</event>

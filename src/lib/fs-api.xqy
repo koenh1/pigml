@@ -152,7 +152,7 @@ declare function fs-api:entity-dir($ent as element(es:envelope),$uri as xs:strin
 					"mime":'text/xml',
 					"readable":$fcapabilities='read',
 					"writable":$fcapabilities=('update','insert','delete'),
-					"size":string-length(xdmp:quote(wkesi:instance-xml-from-document(document{$ent}))),
+					"size":string-length(xdmp:quote(wkesi:instance-xml-from-document($uri,document{$ent}))),
 					"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
 					"owner":$me
 				},
@@ -162,7 +162,7 @@ declare function fs-api:entity-dir($ent as element(es:envelope),$uri as xs:strin
 					"mime":'application/json',
 					"readable":$fcapabilities='read',
 					"writable":$fcapabilities=('update','insert','delete'),
-					"size":string-length(xdmp:quote(wkesi:instance-json-from-document(document{$ent}))),
+					"size":string-length(xdmp:quote(wkesi:instance-json-from-document($uri,document{$ent}))),
 					"mtime":number-node{if (fn:empty($lm)) then 0 else $lm div 10000},
 					"owner":$me
 				}
@@ -589,10 +589,10 @@ else if (not(fn:ends-with($mapped-hpath,'/')) and fs-api:amped-uri-match($mapped
 		let $_:=xdmp:add-response-header('Content-Type',$mime)
 		return if ($doc/es:envelope) then 
 			if (fn:ends-with($path,'/entity.xml')) then
-			wkesi:instance-xml-from-document($doc)
+			wkesi:instance-xml-from-document($mapped-hpath,$doc)
 			else
 			if (fn:ends-with($path,'/entity.json')) then
-			wkesi:instance-json-from-document($doc)
+			wkesi:instance-json-from-document($mapped-hpath,$doc)
 			else
 			xdmp:quote($doc,<options xmlns="xdmp:quote"><indent-untyped>yes</indent-untyped></options>) 
 		else $doc
@@ -605,7 +605,7 @@ else if ($method='POST') then
 	let $data0:=if ($data0b/binary()) then xdmp:binary-decode($data0b/binary(),'utf-8') else $data0b/node()
 	let $uri:=concat($hpath,$filename)
 	let $mime0:=xdmp:uri-content-type($filename)
-	let $data:=document{if (contains($mime0,'xml')) then xdmp:unquote($data0,"format-xml") else if (contains($mime0,'json')) then xdmp:unquote($data0,(),('format-json','repair-full')) else  $data0}
+	let $data:=document{if (contains($mime0,'xml')) then xdmp:unquote($data0,(),"format-xml") else if (contains($mime0,'json')) then xdmp:unquote($data0,(),('format-json','repair-full')) else  $data0}
 	let $mime:=if ($mime0='application/x-unknown-content-type') then if ($data/text()) then 'text/plain' else if ($data/object-node()) then 'application/json' else if ($data/*) then 'text/xml' else if ($data/binary()) then 'application/octet-stream' else $mime0 else $mime0 
 	let $size:=string-length(xdmp:quote($data,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
 	return if ($op='put') then
@@ -619,14 +619,14 @@ else if ($method='POST') then
 				return ()
 			else if ($mapped-hpath ne '/' and doc(remove-end-slash($mapped-hpath))/es:envelope) then
 				if ($filename='envelope.xml') then
-					let $ent:=xdmp:unquote($data0,'format-xml')/es:envelope
+					let $ent:=xdmp:unquote($data0,(),'format-xml')/es:envelope
 					let $_:=xdmp:document-insert(remove-end-slash($mapped-hpath),$ent)
 					let $_:=xdmp:set-response-code(201,"Updated")
 					let $tm:=fn:current-dateTime()
 					return object-node {"owner":$me, "uri":remove-end-slash($mapped-hpath),"ctype":'application/vnd.pigshell.pstyfile',"ident":concat('/fs/',$dbname,$uri),"name":$filename,"readable":true(),"writable":true(),"size":$size,"mime":$mime,"mtime":number-node{xdmp:wallclock-to-timestamp($tm) div 10000}}
 				else 
 				if ($filename='entity.xml') then
-					let $ent:=xdmp:unquote($data0,'format-xml')/es:envelope
+					let $ent:=xdmp:unquote($data0,(),'format-xml')/es:envelope
 					(: TODO let $_:=xdmp:document-insert(remove-end-slash($mapped-hpath),$ent) :)
 					let $_:=xdmp:set-response-code(201,"Updated")
 					let $tm:=fn:current-dateTime()

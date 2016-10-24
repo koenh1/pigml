@@ -23,7 +23,7 @@ declare private function wkes:match($wf as element(wkes:work-flows)) as xs:strin
     let $version:= map:get($info, "version")
     let $base-uri := esi:resolve-base-uri($info)
   let $code:=(
-  if ($dir/@depth=1) then
+  if (string($dir/@depth)='1') then
   <code>
     if (fn:matches($uri,"^{string($dir/@href)}[^/]*$")) then
   </code>
@@ -99,6 +99,10 @@ declare function {$prefix}-wf:create-{$name}($node as node()) as map:map {{
     else
    <code>{$prefix}:extract-instance-{$name}(es:model-get-test-instances(es:model-validate(doc('{base-uri($modeld)}')/es:model))[1])</code>
   }
+}};
+
+declare function {$prefix}-wf:extract-instance($document as document-node()) as map:map {{
+  {$prefix}:extract-instance-{$name}($document/es:envelope/es:instance)
 }};
 
 declare function {$prefix}-wf:validate-envelope($document as document-node()) as document-node() {{
