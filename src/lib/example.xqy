@@ -25,9 +25,9 @@ declare private function map-with(
     $map
 };
 
-declare function ex:create($node as node()) as object-node() {
+declare function ex:create($uri as xs:string,$node as node()) as object-node() {
 	object-node {
-		"id":"test",
+		"id":fn:tokenize($uri,'/')[.!=''][last()],
 		"subject":string($node),
 		"sender":"me"
 	}

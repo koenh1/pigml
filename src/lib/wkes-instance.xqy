@@ -72,10 +72,10 @@ declare function wkes-instance:create-instance($uri as xs:string,$node as node()
 	let $mod as element(module):=wkes-catalog:catalog($uri)
 	let $script:=<code>
 	import module namespace m="{string($mod/@namespace)}" at "{string($mod/@at)}";
-	m:create-{string($mod/@name)}-envelope#1
+	m:create-{string($mod/@name)}-envelope#2
 	</code>/string()
 	let $f:=xdmp:eval($script)
-	let $envelope as document-node():=$f($node)
+	let $envelope as document-node():=$f($uri,$node)
 	let $_:=xdmp:document-insert($uri,$envelope,xdmp:default-permissions(),(concat('/entities/',$mod/@name),xdmp:default-permissions()))
 	return $envelope
 };

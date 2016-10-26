@@ -92,10 +92,10 @@ declare private function map-with(
         else (),
     $map
 }};
-declare function {$prefix}-wf:create-{$name}($node as node()) as map:map {{
+declare function {$prefix}-wf:create-{$name}($uri as xs:string,$node as node()) as map:map {{
   {
     if (map:contains($imports,'create')) then 
-    <code>{map:get($imports,'create')!fn:function-name(.)}($node)!map-with(.,'$type','{$title}')</code>
+    <code>{map:get($imports,'create')!fn:function-name(.)}($uri,$node)!map-with(.,'$type','{$title}')</code>
     else
    <code>{$prefix}:extract-instance-{$name}(es:model-get-test-instances(es:model-validate(doc('{base-uri($modeld)}')/es:model))[1])</code>
   }
@@ -121,8 +121,8 @@ declare private function {$prefix}-wf:create-document($inst as map:map,$attachme
   return {$prefix}:instance-to-envelope($inst)
 }};
 
-declare function {$prefix}-wf:create-{$name}-envelope($node as node()) as document-node() {{
-  let $inst as map:map:={$prefix}-wf:create-{$name}($node)
+declare function {$prefix}-wf:create-{$name}-envelope($uri as xs:string,$node as node()) as document-node() {{
+  let $inst as map:map:={$prefix}-wf:create-{$name}($uri,$node)
   return {$prefix}-wf:create-document($inst,map:new(),map:new(),map:new(({string-join($wf/wkes:work-flow!concat('map:entry("',./@name,'","',./@initial-state,'")'),',')})))
 }};
 

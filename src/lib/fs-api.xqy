@@ -114,10 +114,11 @@ return object-node{
 };
 
 declare function fs-api:entity-dir($ent as element(es:envelope),$uri as xs:string,$ident as xs:string,$fcapabilities as xs:string*,$dbname as xs:string,$me as xs:string) as object-node() {
+	let $_:=if (not(ends-with($ident,'/'))) then fn:error(xs:QName('assert'),$ident) else ()
 	let $lm:=fs-api:amped-last-modified($uri,$fcapabilities)
 	return object-node {
 			"name":fn:tokenize($uri,'/')[.!=''][last()],
-			"ident":concat($ident,'/'),
+			"ident":$ident,
 			"capabilities":array-node{$fcapabilities},
 			"uri":$uri,
 			"mime":'application/vnd.pigshell.dir',
@@ -129,7 +130,7 @@ declare function fs-api:entity-dir($ent as element(es:envelope),$uri as xs:strin
 			"files":array-node {
 				object-node {
 					"name":"ctl",
-					"ident":concat($ident,'/ctl/'),
+					"ident":concat($ident,'ctl/'),
 					"mime":'application/vnd.pigshell.dir',
 					"readable":$fcapabilities='read',
 					"writable":$fcapabilities=('update','insert','delete'),
@@ -138,7 +139,7 @@ declare function fs-api:entity-dir($ent as element(es:envelope),$uri as xs:strin
 				},
 				object-node {
 					"name":"envelope.xml",
-					"ident":concat($ident,'/envelope.xml'),
+					"ident":concat($ident,'envelope.xml'),
 					"mime":'text/xml',
 					"readable":$fcapabilities='read',
 					"writable":$fcapabilities=('update','insert','delete'),
@@ -148,7 +149,7 @@ declare function fs-api:entity-dir($ent as element(es:envelope),$uri as xs:strin
 				},
 				object-node {
 					"name":"entity.xml",
-					"ident":concat($ident,'/entity.xml'),
+					"ident":concat($ident,'entity.xml'),
 					"mime":'text/xml',
 					"readable":$fcapabilities='read',
 					"writable":$fcapabilities=('update','insert','delete'),
@@ -158,7 +159,7 @@ declare function fs-api:entity-dir($ent as element(es:envelope),$uri as xs:strin
 				},
 				object-node {
 					"name":"entity.json",
-					"ident":concat($ident,'/entity.json'),
+					"ident":concat($ident,'entity.json'),
 					"mime":'application/json',
 					"readable":$fcapabilities='read',
 					"writable":$fcapabilities=('update','insert','delete'),
@@ -217,7 +218,7 @@ declare function fs-api:files($path,$dbname,$roles) as array-node() {
 			let $ident:=concat('/fs/',$dbname,'/content',$vpath,$p)
 			let $capabilities:=fs-api:amped-capabilities($uri,$roles)
 			return if ($doc/es:envelope) then 
-				fs-api:entity-dir($doc/es:envelope,$uri,$ident,$capabilities,$dbname,$me)
+				fs-api:entity-dir($doc/es:envelope,$uri,concat($ident,'/'),$capabilities,$dbname,$me)
 			else
 			let $lm:=fs-api:amped-last-modified($uri,$capabilities)
 			let $size:=if ($doc/binary()) then xdmp:binary-size($doc/binary()) else string-length(xdmp:quote($doc,<options xmlns="xdmp:quote"><encoding>ISO-8859-1</encoding></options>))
@@ -690,7 +691,7 @@ else if ($method='POST') then
 				let $_:=xdmp:set-response-code(200,"OK")
 				let $_:=xdmp:add-response-header('Content-Type','application/json')
 				return object-node {
-						"name" : fn:tokenize($uri,'/')[last()],
+						"name" : fn:tokenize($uri,'/')[.!=''][last()],
 						"add-collections":array-node{xdmp:document-get-collections($furi)},
 						"add-permissions":fs-api:amped-document-get-permissions($furi),
 						"set-quality":xdmp:document-get-quality($furi)
