@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>ML Plugin</title>
+  <script src="requirejs/require.js"></script>
+  <script>
+    require({
+      baseUrl: '..',
+      packages: [],
+      paths: {
+        text: 'orion/requirejs/text',
+        i18n: 'orion/requirejs/i18n',
+        domReady: 'orion/requirejs/domReady'
+      }
+    }); 
+
+    require(["orion/mlFileClientPlugin"], function(plugin) {
+      plugin.connect();
+    });
+ </script>
+</head>
+<body></body>
+</html>

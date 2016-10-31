@@ -57,16 +57,33 @@ declare function orion-api:workspace-get-request($path as xs:string) as object-n
 		return $r
 	else 
 		let $w:=document(concat('/orion/workspace',$path))
+		return if (fn:empty($w)) then xdmp:set-response-code(404,"not found")
+		else
 		let $_:=xdmp:set-response-content-type("application/json")
 		let $ts:=xdmp:document-timestamp(concat('/orion/workspace',$path))
 		let $_:=xdmp:add-response-header('ETag',xdmp:integer-to-hex($ts))
 		let $projects:=xdmp:directory(concat('/orion/workspace',$path,'/project/'),'1')
 		return object-node {
 			"Id":substring($path,2),
+			"Directory": true(),
+			"ChildrenLocation":concat("/orion/workspace",$path),
+			"Location":concat("/orion/workspace",$path),
 			"Name":$w/Name,
 			"Projects": array-node {
+				for $project in $projects return $project
+			},
+			"Children": array-node {
 				for $project in $projects 
-					return $project
+					return object-node {
+						"Directory": true(),
+						"Id":$project/Id,
+						"Name":$project/Name,
+						"Location":concat('/orion/file',$path,'/',$project/Id/data(),'/'),
+						"ChildrenLocation":concat('/orion/file',$path,'/',$project/Id/data(),'/?depth=1'),
+						"ExportLocation":concat('/xfer/export',$path,'/',$project/Id/data(),'.zip'),
+						"ImportLocation":concat('/xfer/import',$path,'/',$project/Id/data()),
+      					"LocalTimeStamp": xdmp:document-timestamp(base-uri($project)) idiv 10000
+					}
 			}
 
 		}
@@ -106,13 +123,12 @@ declare function orion-api:workspace-post-request($path as xs:string) as object-
 			else
 			(for $i in 1 to 1000000 where orion-api:amped-uri-exists(concat('/orion/workspace',$path,'/project/A',$i),false())=false() 
 			and orion-api:amped-uri-exists(concat('/orion/file',$path,'/A',$i),true())=false() return concat('A',$i))[1]
-		let $location as xs:string:=if (fn:empty($body/ContentLocation/data())) then concat('/orion/file',$path,'/',$id)
+		let $location as xs:string:=if (fn:empty($body/ContentLocation/data())) then concat('/orion/file',$path,'/',$id,'/')
 			else $body/ContentLocation/data()
 		let $d:=object-node{"Id" : $id,"Location": concat('/orion/workspace',$path,'/project/',$id), "Name" : $name, "Owner" : xdmp:get-current-user(),"ContentLocation":$location }
 		let $_:=xdmp:document-insert(
-	       concat('/orion/workspace',$path,'/project/',$id), $d,
-	       xdmp:default-permissions(),
-	       "/orion/workspaces/")
+	       concat('/orion/workspace',$path,'/project/',$id), $d, xdmp:default-permissions(),"/orion/workspaces/")
+		let $_:=xdmp:directory-create($location,xdmp:default-permissions(),('/orion/files/','/orion/projects/'))
 		return $d
 };
 
@@ -122,7 +138,7 @@ declare function orion-api:workspace-delete-request($path as xs:string) {
 };
 
 declare private function orion-api:children($uri as xs:string,$depth as xs:int) as array-node() {
-	let $uris:=cts:uris((),(),cts:directory-query($uri,if ($depth=1) then '1' else 'infinity'))[count(tokenize(substring-after(.,$uri),'/')[.!='']) le $depth]
+	let $uris:=cts:uris((),("any"),cts:directory-query($uri,if ($depth=1) then '1' else 'infinity'))[count(tokenize(substring-after(.,$uri),'/')[.!='']) le $depth]
 	return array-node {
 		$uris!orion-api:file(.,$depth - 1,false())
 	}
@@ -147,17 +163,17 @@ declare private function orion-api:file($uri as xs:string,$depth as xs:int,$incl
 		!map-with(.,"Directory", $directory)
 		!map-with(.,"Length", $size)
 		!(if ($ts) then map-with(.,"LocalTimeStamp", number-node{$ts}) else .)
-		!map-with(.,"Location", concat('/file',$path))
+		!map-with(.,"Location", concat('/orion/file',$path))
 		!map-with(.,"Name", $name)
 		!(if ($depth gt 0 and $directory) then map-with(.,"ImportLocation", concat("/xfer/import/",substring-after($uri,'/file/')))!map-with(.,'Children',orion-api:children($uri,$depth)) else .)
 		!(if ($include-parents) then map-with(.,"Parents", array-node {
 		  	for $parent at $pos in $parents where $pos gt 1 order by $pos descending return object-node {
-		    	"ChildrenLocation": concat('/file/',string-join($parents[1 to $pos],'/'),"/?depth=1"),
-		    	"Location": concat("/file/",string-join($parents[1 to $pos],'/'),'/'),
+		    	"ChildrenLocation": concat('/orion/file/',string-join($parents[1 to $pos],'/'),"/?depth=1"),
+		    	"Location": concat("/orion/file/",string-join($parents[1 to $pos],'/'),'/'),
 		    	"Name": $parent
 			} 
 		  }) else .)
-		!map-with(.,if ($directory) then "ChildrenLocation" else "FileEncoding",if ($directory) then concat('/file',$path,"?depth=1") else array-node {"UTF-8"})
+		!map-with(.,if ($directory) then "ChildrenLocation" else "FileEncoding",if ($directory) then concat('/orion/file',$path,"?depth=1") else array-node {"UTF-8"})
 };
 
 declare function orion-api:file-get-request($path as xs:string) {
@@ -204,7 +220,6 @@ declare function orion-api:file-post-request($path as xs:string) {
 	let $parents:=tokenize($path,'/')[.!='']
 	let $uri:=concat('/orion/file',$path,if (ends-with($path,'/') or fn:empty($name)) then () else '/',$name,if ($directory) then '/' else ())
 	let $exists as xs:boolean:=amped-uri-exists($uri,false())
-	let $luri:=substring-after($uri,'/orion')
 	return if ($create-options='no-overwrite' and $exists) then 
 		xdmp:set-response-code(412,'file exists')
 	else if ($method-override='PATCH') then
@@ -218,7 +233,7 @@ declare function orion-api:file-post-request($path as xs:string) {
 		else
 			xdmp:set-response-code(414,"document "||$uri||" changed "||$ifmatch||"!="||$hash)
 	else
-	if ($create-options=('move','copy') and starts-with($body/Location/data(),'/file/') and ends-with($body/Location/data(),'/')) then
+	if ($create-options=('move','copy') and contains($body/Location/data(),'/orion/file/') and ends-with($body/Location/data(),'/')) then
 		let $source:=concat('/orion/file',substring-after($body/Location/data(),'/file'))
 		let $sources:=cts:uri-match(concat($source,'*'))
 		return if (fn:empty($sources)) then xdmp:set-response-code(404,'not found '||$source)
@@ -229,10 +244,10 @@ declare function orion-api:file-post-request($path as xs:string) {
 			let $_:=xdmp:document-insert($t,$d,xdmp:default-permissions(),('/orion/files/'))
 			return if ($create-options='move') then xdmp:document-delete($uri2) else ()
 		let $_:=xdmp:set-response-code(if ($exists) then 200 else 201,'created')
-		let $_:=xdmp:add-response-header("Location",$luri)
+		let $_:=xdmp:add-response-header("Location",$uri)
 		return orion-api:file($uri,0,false(),$ts,0)		
 	else
-		let $source as node():=if ($create-options=('move','copy') and starts-with($body/Location/data(),'/file/')) 
+		let $source as node():=if ($create-options=('move','copy') and contains($body/Location/data(),'/orion/file/')) 
 			then doc(concat('/orion/file',substring-after($body/Location/data(),'/file')))
 			else text{''}
 		let $_:=if ($directory) then xdmp:directory-create($uri,xdmp:default-permissions(),('/orion/files/'))
@@ -241,7 +256,7 @@ declare function orion-api:file-post-request($path as xs:string) {
 			then xdmp:document-delete(concat('/orion/file',substring-after($body/Location/data(),'/file')))
 			else ()
 		let $_:=xdmp:set-response-code(if ($exists) then 200 else 201,'created')
-		let $_:=xdmp:add-response-header("Location",$luri)
+		let $_:=xdmp:add-response-header("Location",$uri)
 		return orion-api:file($uri,0,false(),$ts,string-length(xdmp:quote($source)))
 };
 
