@@ -18,4 +18,10 @@
         <dispatch>/fs.xqy</dispatch>
    </match-path>
 
+   <match-path matches="^/orion/([^/]+)(.*)$">
+        <add-query-param name="api">$1</add-query-param>
+        <add-query-param name="path">$2</add-query-param>
+        <dispatch>/orion.xqy</dispatch>      
+   </match-path>
+
  </rewriter>
