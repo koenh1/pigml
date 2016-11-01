@@ -11,6 +11,7 @@ declare function orion-api:main() {
 		switch($api)
 		case 'file' return orion-api:file-get-request($path)
 		case 'workspace' return orion-api:workspace-get-request($path)
+		case 'filesearch' return orion-api:filesearch-get-request($path)
 		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
 	case 'PUT' return
 		switch($api)
@@ -52,9 +53,58 @@ declare private function is-file($uri as xs:string?) as xs:boolean {
 
 declare private function ensure-type($uri as xs:string,$node as node()?) as node()? {
 	if (fn:empty($node)) then ()
-	else if (($node/binary() or $node/text()) and contains(xdmp:uri-content-type($uri),'xml')) then try{document{xdmp:unquote(xdmp:quote($node))}} catch ($ex){$node}
+	else if (($node/binary() or $node/text()) and (contains(xdmp:uri-content-type($uri),'xml') or contains(xdmp:uri-content-type($uri),'json'))) then try{document{xdmp:unquote(xdmp:quote($node))}} catch ($ex){$node}
 	else if ($node/binary() and contains(xdmp:uri-content-type($uri),'text')) then try{document{text{xdmp:quote($node)}}} catch ($ex){$node}
 	else $node
+};
+
+declare function orion-api:filesearch-get-request($path as xs:string) as object-node() {
+	let $sort as xs:string:=xdmp:get-request-field('sort')
+	let $rows as xs:integer:=xs:integer(xdmp:get-request-field('rows'))
+	let $start as xs:integer:=xs:integer(xdmp:get-request-field('start'))
+	let $q as xs:string:=xdmp:get-request-field('q')
+	let $words:=fn:replace($q, '^(("([^"]+)")|([^ ]+))[ ].*$', "$3$4")
+	let $names:=fn:tokenize(fn:replace($q, '.+ Name:([^ ]+).*', "$1"),'/')
+	let $location:=fn:replace($q, '.+ Location:([^ ]+).*', "$1")
+	let $case-sensitive as xs:boolean:=fn:replace($q, '.+ CaseSensitive:([^ ]+).*', "$1")='true'
+	let $whole-word as xs:boolean:=fn:replace($q, '.+ WholeWord:([^ ]+).*', "$1")='true'
+	let $regex as xs:boolean:=fn:replace($q, '.+ RegEx:([^ ]+).*', "$1")='true'
+	let $uris0:=cts:uri-match(ml-uri(orion-path($location)))
+	let $uris:=if ($names) then for $uri in $uris0 
+		let $n:=fn:tokenize($uri,'/')[last()]
+		let $m:=for $name in $names 
+			let $p:=fn:replace($name,'[.]','[.]')!fn:replace(.,'[*]','.*')
+			return fn:matches($n,concat("^",$p,"$"),"i")
+		return if ($m) then $uri else ()
+	else $uris0
+	let $location-query:=cts:document-query($uris)
+	let $word-queries:=for $word in fn:tokenize($words,'[^\w]+')
+		let $pat:=if ($whole-word) then $word else concat($word,'*') 
+		return cts:word-query($pat,(if ($case-sensitive) then "case-sensitive" else "case-insensitive"))
+	let $result:=cts:uris((),("document","checked",concat("skip=",$start),concat("limit=",$rows)),cts:and-query(($word-queries,$location-query)))
+	return object-node {
+		"response": object-node {
+			"docs":array-node {
+				for $r in $result return orion-api:file($r,0,false())
+			},
+			"numFound":number-node{count($result)},
+			"start":$start
+		},
+		"responseHeader": object-node {
+			"params":object-node {
+		      "fl": "Name,NameLower,Length,Directory,LastModified,Location,Path,RegEx,CaseSensitive,WholeWord",
+		      "fq": array-node {
+		        concat("Location:",$location),
+		        concat("UserName:",xdmp:get-current-user())
+		      },
+		      "rows": $rows,
+		      "sort": $sort,
+		      "start": $start,
+		      "wt": "json"				
+			},
+			"status":0
+		}
+	}
 };
 
 declare function orion-api:workspace-get-request($path as xs:string) as object-node()? {
@@ -228,8 +278,8 @@ declare function orion-api:file-get-request($path as xs:string) {
 		case 'meta' return orion-api:file($uri,$depth,true())
 		case 'body' return 
 			let $d:=doc($uri)
-			let $hash:=xdmp:hash64(if ($d/binary()) then xs:string(xs:base64Binary($d/binary())) else xdmp:quote($d))
-			let $_:=xdmp:add-response-header('ETag',xdmp:integer-to-hex($hash))
+			let $hash:=document-hash($d)
+			let $_:=xdmp:add-response-header('ETag',$hash)
 			return if (fn:empty($d)) then text{''} else $d
 		default return fn:error(xs:QName('orion-api:file-get-request'),'unsupported part '||$part)
 		return if (fn:count($parts)=1) then
@@ -265,7 +315,7 @@ declare function orion-api:file-post-request($path as xs:string) {
 	else if ($method-override='PATCH') then
 		let $ifmatch as xs:string:=normalize-space(xdmp:get-request-header('If-Match'))
 		let $doc:=doc($uri)
-		let $hash:=if ($ifmatch!='') then xdmp:integer-to-hex(xdmp:hash64(xdmp:quote($doc))) else ()
+		let $hash:=if ($ifmatch!='') then document-hash($doc) else ()
 		return if ($ifmatch='' or $ifmatch=$hash) then 
 			let $ndoc:=document{text{fn:fold-left(function($a,$diff){orion-api:patch($a,$diff/start!xs:integer(.),$diff/end!xs:integer(.),$diff/text/data())},xdmp:quote($doc),$body/diff)}}
 			let $_:=xdmp:node-replace($doc,ensure-type($uri,$ndoc))
@@ -310,6 +360,10 @@ declare private function document-length($node as node()?) as xs:integer {
 	if (fn:empty($node)) then 0 else if ($node/binary()) then xdmp:binary-size($node/binary()) else string-length(xdmp:quote($node))
 };
 
+declare private function document-hash($node as node()?) as xs:string {
+	xdmp:integer-to-hex(xdmp:hash64(if ($node/binary()) then xs:string(xs:base64Binary($node/binary())) else xdmp:quote($node)))
+};
+
 declare function orion-api:file-put-request($path as xs:string) {
 	let $uri:=ml-uri($path)
 	let $directory as xs:boolean:=ends-with($uri,'/') or count(xdmp:document-properties($uri)//prop:directory)!=0
@@ -327,7 +381,7 @@ declare function orion-api:file-put-request($path as xs:string) {
 				else
 				document{text{xdmp:get-request-body('text')}} else xdmp:http-get($source) 
 			let $doc:=doc($uri)
-			let $hash:=if ($ifmatch!='') then xdmp:integer-to-hex(xdmp:hash64(xdmp:quote($doc))) else ()
+			let $hash:=if ($ifmatch!='') then document-hash($doc) else ()
 			return if ($ifmatch='' or $ifmatch=$hash) then 
 				let $_:=if ($exists) then xdmp:node-replace($doc,ensure-type($uri,$body))
 				else xdmp:document-insert($uri,ensure-type($uri,$body))
@@ -345,7 +399,7 @@ declare function orion-api:file-delete-request($path as xs:string) {
 	let $doc:=doc($uri)
 	return if (not($directory) and fn:empty($doc)) then xdmp:set-response-code(205,'Ok (not found)')
 	else
-	let $hash:=if ($ifmatch!='') then xdmp:integer-to-hex(xdmp:hash64(xdmp:quote($doc))) else ()
+	let $hash:=if ($ifmatch!='') then document-hash($doc) else ()
 	return if ($ifmatch='' or $ifmatch=$hash) then 
 		let $count:=if ($directory) then
 			let $sources:=cts:uri-match(concat($uri,if (ends-with($uri,'/')) then () else '/','*'))
