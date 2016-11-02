@@ -57,10 +57,12 @@ define(["orion/Deferred", "orion/plugin", "orion/fileImpl", "domReady!"], functi
 
 
   function connect() {
+    console.log('connecting')
      var headers = { name: "Connect Orion Plugin", version: "1.0", description: "Connect Orion Plugin." };
      var provider = new PluginProvider(headers);
      registerServiceProviders(provider)
     provider.connect();
+    console.log('connected')
   }
 
   function registerServiceProviders(provider) {
@@ -83,6 +85,39 @@ define(["orion/Deferred", "orion/plugin", "orion/fileImpl", "domReady!"], functi
       ranking: -1,
       pattern: [fileBase, workspaceBase, importBase]
     });
+
+
+    provider.registerService("orion.cm.managedservice",
+         {  updated: function(properties) {
+            console.log(properties)
+            }
+         },
+         {  pid: "example.pid"
+         });
+
+    provider.registerService('orion.core.setting',
+        {},  // no methods
+        {  settings: [
+               {  pid: 'example.pid',
+                  name: 'Navigation settings',
+                  category: 'Credentials',
+                  properties: [
+                      {
+                        id:'userid',
+                        name:"UserId",
+                        type:'string',
+                        defaultValue:'admin'
+                      },
+                      {
+                        id:'password',
+                        name:"PassWord",
+                        type:'string',
+                        defaultValue:'admin'
+                      }
+                  ]
+               }
+           ]
+        });
   }
 
   return {

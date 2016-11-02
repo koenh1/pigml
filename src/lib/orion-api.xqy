@@ -81,7 +81,7 @@ declare function orion-api:filesearch-get-request($path as xs:string) as object-
 	let $word-queries:=for $word in fn:tokenize($words,'[^\w]+')
 		let $pat:=if ($whole-word) then $word else concat($word,'*') 
 		return cts:word-query($pat,(if ($case-sensitive) then "case-sensitive" else "case-insensitive"))
-	let $result:=cts:uris((),("document","checked",concat("skip=",$start),concat("limit=",$rows)),cts:and-query(($word-queries,$location-query)))
+	let $result:=cts:search(doc(),cts:and-query(($word-queries,$location-query)))[($start+1) to ($start+$rows)]!base-uri(.)
 	return object-node {
 		"response": object-node {
 			"docs":array-node {
