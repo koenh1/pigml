@@ -4,6 +4,10 @@
         <dispatch/>
     </match-method>
    </match-path>
+   <match-path matches="^/login">
+        <dispatch>/login.xqy</dispatch>
+   </match-path>
+
    <match-path matches="^/fs/([^/]+)$">
         <set-database>$1</set-database>
         <add-query-param name="path">/</add-query-param>

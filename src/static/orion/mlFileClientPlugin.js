@@ -58,7 +58,7 @@ define(["orion/Deferred", "orion/plugin", "orion/fileImpl", "domReady!"], functi
 
   function connect() {
     console.log('connecting')
-     var headers = { name: "Connect Orion Plugin", version: "1.0", description: "Connect Orion Plugin." };
+     var headers = { login:"http://localhost:8040/login",name: "Connect Orion Plugin", version: "1.0", description: "Connect Orion Plugin." };
      var provider = new PluginProvider(headers);
      registerServiceProviders(provider)
     provider.connect();
@@ -89,7 +89,7 @@ define(["orion/Deferred", "orion/plugin", "orion/fileImpl", "domReady!"], functi
 
     provider.registerService("orion.cm.managedservice",
          {  updated: function(properties) {
-            console.log(properties)
+            //console.log(properties)
             }
          },
          {  pid: "example.pid"
