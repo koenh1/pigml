@@ -10,7 +10,7 @@
  ******************************************************************************/
 
 /*eslint-env browser, amd*/
-define(["orion/Deferred", "orion/plugin", "orion/fileImpl", "domReady!"], function(Deferred, PluginProvider, FileServiceImpl) {
+define(["orion/Deferred", "orion/plugin", "orion/mlFileImpl", "domReady!"], function(Deferred, PluginProvider, FileServiceImpl) {
   function trace(implementation) {
     var method;
     var traced = {};
