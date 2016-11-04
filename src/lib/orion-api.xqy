@@ -1,6 +1,8 @@
 xquery version "1.0-ml";
 module namespace orion-api="http://marklogic.com/lib/xquery/orion-api"; 
 declare namespace prop="http://marklogic.com/xdmp/property";
+declare namespace error="http://marklogic.com/xdmp/error";
+declare namespace tidy="xdmp:tidy";
 declare option xdmp:mapping "false";
 
 declare function orion-api:main() {
@@ -11,6 +13,7 @@ declare function orion-api:main() {
 	case 'GET' return
 		switch($api)
 		case 'file' return orion-api:file-get-request($path)
+		case 'validate' return orion-api:validate-get-request($path)
 		case 'workspace' return orion-api:workspace-get-request($path)
 		case 'filesearch' return orion-api:filesearch-get-request($path)
 		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
@@ -52,6 +55,11 @@ declare private function ml-path($uri as xs:string) as xs:string {
 	substring-after($uri,'/orion/mlfile')
 };
 
+declare private function uri-content-type($uri as xs:string) as xs:string {
+	let $r:=xdmp:uri-content-type($uri)
+	return if ($r='application/vnd.marklogic-xdmp') then 'application/xquery' else $r
+};
+
 declare private function orion-path($uri as xs:string) as xs:string {
 	substring-after($uri,'/orion/file')
 };
@@ -62,10 +70,65 @@ declare private function is-file($uri as xs:string?) as xs:boolean {
 
 declare private function ensure-type($uri as xs:string,$node as node()?) as node()? {
 	if (fn:empty($node)) then ()
-	else if (($node/binary() or $node/text()) and (contains(xdmp:uri-content-type($uri),'xml') or contains(xdmp:uri-content-type($uri),'json'))) then try{document{xdmp:unquote(xdmp:quote($node))}} catch ($ex){$node}
-	else if ($node/binary() and contains(xdmp:uri-content-type($uri),'text')) then try{document{text{xdmp:quote($node)}}} catch ($ex){$node}
+	else if (($node/binary() or $node/text()) and (contains(uri-content-type($uri),'xml') or contains(uri-content-type($uri),'json'))) then try{document{xdmp:unquote(xdmp:quote($node))}} catch ($ex){$node}
+	else if ($node/binary() and contains(uri-content-type($uri),'text')) then try{document{text{xdmp:quote($node)}}} catch ($ex){$node}
 	else if (starts-with($uri,'/orion/workspace/')) then try{document{xdmp:unquote(xdmp:quote($node))}} catch ($ex){$node}
 	else $node
+};
+
+declare function orion-api:validate-get-request($path as xs:string) as object-node() {
+	let $uri:=ml-uri($path)
+	let $type:=uri-content-type($uri)
+	return switch($type)
+	case 'text/html' return object-node {
+		"uri":$uri,
+		"problems":array-node {
+			xdmp:tidy(xdmp:quote(doc($uri)),<options xmlns="xdmp:tidy">
+		<doctype>transitional</doctype></options>)[1]/(tidy:warning|tidy:error)! object-node {
+				"description":./data(),
+				"severity":local-name(.),
+				"line":./@tidy:line/xs:int(.),
+				"start":./@tidy:column/xs:int(.),
+				"end":./@tidy:column/xs:int(.)+1
+			}
+		}
+	}
+	case 'application/xquery' return object-node {
+		"uri":$uri,
+		"problems":array-node {
+			try{let $_:=xdmp:pretty-print(xdmp:quote(doc($uri))) return ()}catch($ex){$ex!object-node { 
+					"description":concat(./error:message/data(),' ,',./error:data/error:datum[1]/data()),
+					"line":./error:stack/error:frame[1]/error:line/xs:int(.),
+					"severity":"warning",
+					"start":./error:stack/error:frame[1]/error:column/xs:int(.),
+					"end":./error:stack/error:frame[1]/error:column/xs:int(.)+1
+				}
+			}
+		}
+	}
+	default return object-node {
+		"uri":$uri,
+		"problems":array-node {
+			try{
+				let $d0:=doc($uri)
+				let $d:=if ($d0/element()) then $d0 else xdmp:unquote(xdmp:quote($d0)) 
+				return if (xdmp:describe(sc:type($d))!='(any(lax,!())*)|#PCDATA') then xdmp:validate($d,'strict')/error:error!object-node {
+					"description":concat(./error:message/data(),' ,',./error:data/error:datum[last()-1]/data()),
+					"line":1,
+					"severity":"error",
+					"start":0,
+					"end":1					
+				} else ()
+			} catch($ex){$ex!object-node { 
+					"description":concat(./error:message/data(),' ,',./error:data/error:datum[1]/data()),
+					"line":./error:data/error:datum[3]/xs:int(.),
+					"severity":"warning",
+					"start":0,
+					"end":1
+				}
+			}
+		}
+	}
 };
 
 declare function orion-api:filesearch-get-request($path as xs:string) as object-node() {
@@ -347,13 +410,13 @@ declare function orion-api:file-get-request($path as xs:string) {
 			return if (fn:empty($d)) then text{''} else $d
 		default return fn:error(xs:QName('orion-api:file-get-request'),'unsupported part '||$part)
 		return if (fn:count($parts)=1) then
-			let $_:=xdmp:set-response-content-type(if ($parts='meta') then 'application/json' else xdmp:uri-content-type($path))
+			let $_:=xdmp:set-response-content-type(if ($parts='meta') then 'application/json' else uri-content-type($path))
 			return if ($result instance of node()) then format-document($result) else text{xdmp:quote($result)}
 		else
-			xdmp:multipart-encode('boundary10382384-2840',<manifest>{for $part in $parts return <part><headers><Content-Type>{if ($part='meta') then 'application/json' else xdmp:uri-content-type($path)}</Content-Type></headers></part>}</manifest>,
+			xdmp:multipart-encode('boundary10382384-2840',<manifest>{for $part in $parts return <part><headers><Content-Type>{if ($part='meta') then 'application/json' else uri-content-type($path)}</Content-Type></headers></part>}</manifest>,
 				for $r in $result return if ($r instance of node()) then format-document($r) else text{xdmp:quote($r)}
 			)
-	else if (ends-with($path,'.tern-project') and $parts='body' and count($parts)=1) then object-node{}
+	else if (fn:tokenize($path,'/')[last()]=('.tern-project','.eslintrc.js','.eslintrc.json','package.json','.eslintrc') and $parts='body' and count($parts)=1) then object-node{}
 	else 
 		let $_:=xdmp:set-response-code(404,$uri||' not found')
 		return ()
@@ -420,7 +483,7 @@ declare function orion-api:file-post-request($path as xs:string) {
 };
 
 declare private function is-binary($uri as xs:string) {
-	not(contains(xdmp:uri-content-type($uri),'text'))
+	not(contains(uri-content-type($uri),'text') or contains(uri-content-type($uri),'xml') or contains(uri-content-type($uri),'xquery'))
 };
 
 declare private function document-length($node as node()?) as xs:integer {

@@ -86,6 +86,7 @@ define(["orion/Deferred", "orion/plugin", "orion/mlFileImpl", "domReady!"], func
       pattern: [fileBase, workspaceBase, importBase]
     });
 
+    provider.registerServiceProvider("orion.edit.validator", service,{ contentType: ['text/html','application/xquery',"text/xml","application/xml",'application/xslt+xml','application/rdf+xml','application/atom+xml','application/owl+xml','image/svg+xml','application/vnd.marklogic-tde+xml','application/vnd.marklogic.triples+xml','application/xhtml+xml']});
 
     provider.registerService("orion.cm.managedservice",
          {  updated: function(properties) {

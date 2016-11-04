@@ -1,7 +1,7 @@
 
 let $user:=if (fn:empty(xdmp:get-request-field('user'))) then xdmp:get-session-field('user') else xdmp:get-request-field('user')
 let $password:=if (fn:empty(xdmp:get-request-field('password'))) then xdmp:get-session-field('password') else xdmp:get-request-field('password')
-let $remember as xs:boolean:=if (fn:empty(xdmp:get-request-field('user'))) then xdmp:get-session-field('remember') else xdmp:get-request-field('remember')='on'
+let $remember as xs:boolean:=if (fn:empty(xdmp:get-request-field('user'))) then if (fn:empty(xdmp:get-session-field('remember'))) then false() else xdmp:get-session-field('remember') else xdmp:get-request-field('remember')='on'
 let $action:=xdmp:get-request-field('action')
 let $_:=xdmp:set-response-content-type("text/html")
 

@@ -186,6 +186,29 @@ define(["orion/Deferred", "orion/xhr", "orion/URL-shim", "orion/operation", "ori
 	
 	FileServiceImpl.prototype = /**@lends eclipse.FileServiceImpl.prototype */
 	{
+
+		_validate: function(location) {
+			return _xhr("GET", location.replace(/\/file\//,'/validate/'), {
+				headers: {
+					"Orion-Version": "1"
+				},
+				timeout: 15000
+			}).then(function(result) {
+				var jsonData = result.response ? JSON.parse(result.response) : {};
+				return jsonData.problems;
+			}.bind(this));
+		},
+		computeProblems:function(editorContext, options) {
+			var result=new Deferred();
+			var self=this;
+			editorContext.isDirty().then(function(dirty) {
+				if (!dirty) editorContext.getFileMetadata().then(function(meta) {
+					self._validate(meta.location).then(function(problems) {
+						result.resolve({ problems: problems })
+					}
+	            )})});
+			return result;
+		},
 		/**
 		 * Obtains the children of a remote resource
 		 * @param {String} loc The location of the item to obtain children for
