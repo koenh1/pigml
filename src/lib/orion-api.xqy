@@ -26,6 +26,7 @@ declare function orion-api:main() {
 		switch($api)
 		case 'file' return orion-api:file-post-request($path)
 		case 'workspace' return orion-api:workspace-post-request($path)
+		case 'pretty-print' return orion-api:pretty-print($path)
 		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
 	case 'DELETE' return
 		switch($api)
@@ -74,6 +75,15 @@ declare private function ensure-type($uri as xs:string,$node as node()?) as node
 	else if ($node/binary() and contains(uri-content-type($uri),'text')) then try{document{text{xdmp:quote($node)}}} catch ($ex){$node}
 	else if (starts-with($uri,'/orion/workspace/')) then try{document{xdmp:unquote(xdmp:quote($node))}} catch ($ex){$node}
 	else $node
+};
+
+declare function orion-api:pretty-print($path as xs:string) as xs:string {
+	let $content-type:=xdmp:get-request-header('Content-Type')
+	let $text:=xdmp:get-request-body('text')
+	let $_:=xdmp:set-response-content-type($content-type)
+	return switch($content-type)
+	case 'application/xquery' return try{fn:replace(xdmp:pretty-print($text),'[%]Q[{]http://www.w3.org/2012/xquery[}]private(&#10;)?','private ')}catch($ex){$text}
+	default return $text
 };
 
 declare function orion-api:validate-get-request($path as xs:string) as object-node() {

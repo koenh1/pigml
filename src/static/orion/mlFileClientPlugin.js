@@ -88,6 +88,15 @@ define(["orion/Deferred", "orion/plugin", "orion/mlFileImpl", "domReady!"], func
 
     provider.registerServiceProvider("orion.edit.validator", service,{ contentType: ['text/html','application/xquery',"text/xml","application/xml",'application/xslt+xml','application/rdf+xml','application/atom+xml','application/owl+xml','image/svg+xml','application/vnd.marklogic-tde+xml','application/vnd.marklogic.triples+xml','application/xhtml+xml']});
 
+provider.registerServiceProvider("orion.edit.command", {
+   run : function(selectedText, text, selection) {
+     return service.prettyPrint(text,'application/xquery')
+   }
+ }, {
+   contentType: ["application/xquery"],
+   name : "PrettyPrint",
+   id : "mp.prettyprint",
+ });
     provider.registerService("orion.cm.managedservice",
          {  updated: function(properties) {
             //console.log(properties)
