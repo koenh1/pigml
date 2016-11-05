@@ -112,20 +112,27 @@ declare function orion-api:validate-get-request($path as xs:string) as object-no
 			try{
 				let $d0:=doc($uri)
 				let $d:=if ($d0/element()) then $d0 else xdmp:unquote(xdmp:quote($d0)) 
-				return if (xdmp:describe(sc:type($d))!='(any(lax,!())*)|#PCDATA') then xdmp:validate($d,'strict')/error:error!object-node {
-					"description":concat(./error:message/data(),' ,',./error:data/error:datum[last()-1]/data()),
-					"line":1,
+				return if (xdmp:describe(sc:type($d))!='(any(lax,!())*)|#PCDATA') then 
+					let $error:=xdmp:validate($d)/error:error
+					return if (fn:empty($error)) then ()
+					else
+					let $xpath:=$error/error:data/error:datum[last()-1]/data()
+					let $offsets:=$xpath!node-offset-xpath($d,.)
+					return object-node {
+					"ex":if (fn:empty($offsets)) then xdmp:describe($error,(),()) else "",
+					"description":if ($error/error:message/data()) then string-join(($error/error:message/data(),$error/error:data/error:datum[1]/data()),'&#10;') else xdmp:describe($error),
+					"line":if ($offsets) then $offsets[1] else 0,
 					"severity":"error",
-					"start":0,
-					"end":1					
+					"start":if ($offsets[2]) then $offsets[2] else 0,
+					"end":if ($offsets[3]) then $offsets[3] else 0				
 				} else ()
-			} catch($ex){$ex!object-node { 
-					"description":concat(./error:message/data(),' ,',./error:data/error:datum[1]/data()),
-					"line":./error:data/error:datum[3]/xs:int(.),
+			} catch($ex){if ($ex/error:data/error:datum[3] castable as xs:int) then object-node {
+					"description":concat($ex/error:message/data(),' ,',$ex/error:data/error:datum[1]/data()),
+					"line":$ex/error:data/error:datum[3]/xs:int(.),
 					"severity":"warning",
 					"start":0,
 					"end":1
-				}
+				} else xdmp:rethrow() 
 			}
 		}
 	}
@@ -563,5 +570,29 @@ declare private function map-with(
         then map:put($map, $key-name, $value)
         else (),
     $map
+};
+
+declare private function mark($node as node(),$find as node()) as node()* {
+  let $m:=if ($node is $find) then text{'&#1421;'} else ()
+  return typeswitch($node)
+  case element() return element{node-name($node)}{$node/@*!mark(.,$find),$m,$node/node()!mark(.,$find)}
+  case document-node() return document{$node/node()!mark(.,$find)}
+  case attribute() return attribute {node-name($node)}{$m,$node/string(.),$m}
+  default return ($m,$node)
+};
+
+declare function node-offset($node as node(),$find as node()) as xs:int* {
+  let $x:=mark($node,$find)
+  let $s:=format-document($x)
+  let $start:=substring-before($s,'&#1421;')
+  let $isatr as xs:boolean:=ends-with($start,'="')
+  let $line:=string-length($start)-string-length(translate($start,'&#10;',''))+1
+  let $linet:=tokenize($s,'&#10;')[$line]
+  let $start2:=string-length(substring-before(if ($isatr) then $linet else translate($linet,'&lt;','&#1421;'),'&#1421;'))
+  let $end2:=if ($isatr) then $start2+string-length(substring-before(substring($linet,$start2+2,string-length($linet)),'&#1421;')) else string-length($linet)
+  return ($line,$start2,$end2)
+};
+declare function node-offset-xpath($node as node(),$xpath as xs:string) as xs:int* {
+  node-offset($node,xdmp:value(concat('$node',if (contains($xpath,')')) then substring-after($xpath,')') else $xpath)))
 };
 
