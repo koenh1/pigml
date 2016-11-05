@@ -7,7 +7,8 @@ let $_:=xdmp:set-response-content-type("text/html")
 
 return try 
 {if (fn:empty($user) or fn:empty($password) or $action='logout' or not(xdmp:login($user,$password,true()))) then
-	<html>
+	let $_:=xdmp:set-response-code(401,'Please log in')
+	return <html>
 		<head><title>Login</title>
 		<style><![CDATA[
 form {
