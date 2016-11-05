@@ -153,8 +153,9 @@ declare function orion-api:filesearch-get-request($path as xs:string) as object-
 	let $rows as xs:integer:=xs:integer(xdmp:get-request-field('rows'))
 	let $start as xs:integer:=xs:integer(xdmp:get-request-field('start'))
 	let $q as xs:string:=xdmp:get-request-field('q')
-	let $words:=fn:replace($q, '^(("([^"]+)")|([^ ]+))[ ].*$', "$3$4")
-	let $names:=fn:tokenize(fn:replace($q, '.+ Name:([^ ]+).*', "$1"),'/')
+	let $words:=if (fn:matches($q,'^[A-Z][A-Za-z]*:')) then () else fn:replace($q, '^(("([^"]+)")|([^ ]+))[ ].*$', "$3$4")
+	let $names:=fn:tokenize(fn:replace($q, '(^Name|.+ Name)(Lower)?:([^ ]+).*', "$3"),'/')!fn:replace(.,'[.]','[.]')!fn:replace(.,'[*]','.*')!fn:replace(.,'[?]','.')
+	let $namelower:=contains($q,'NameLower:')
 	let $location:=fn:replace($q, '.+ Location:([^ ]+).*', "$1")
 	let $case-sensitive as xs:boolean:=fn:replace($q, '.+ CaseSensitive:([^ ]+).*', "$1")='true'
 	let $whole-word as xs:boolean:=fn:replace($q, '.+ WholeWord:([^ ]+).*', "$1")='true'
@@ -162,9 +163,8 @@ declare function orion-api:filesearch-get-request($path as xs:string) as object-
 	let $uris0:=cts:uri-match(ml-uri(orion-path($location)))
 	let $uris:=if ($names) then for $uri in $uris0 
 		let $n:=fn:tokenize($uri,'/')[last()]
-		let $m:=for $name in $names 
-			let $p:=fn:replace($name,'[.]','[.]')!fn:replace(.,'[*]','.*')
-			return fn:matches($n,concat("^",$p,"$"),"i")
+		let $m:=for $p in $names 
+			return fn:matches($n,concat("^",$p,"$"),if ($namelower) then 'i' else ())
 		return if ($m) then $uri else ()
 	else $uris0
 	let $location-query:=cts:document-query($uris)
@@ -375,7 +375,7 @@ declare private function orion-api:file($uri as xs:string,$depth as xs:int,$incl
 		"Attributes":object-node {
 		    "Executable": $directory,
 		    "Immutable": false(),
-		    "ReadOnly": false(),
+		    "ReadOnly": true(),
 		    "SymLink": false()
 		 },
 		"Directory":false(),
