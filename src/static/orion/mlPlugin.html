@@ -3,19 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <title>ML Plugin</title>
-  <script src="requirejs/require.js"></script>
+  <script src="//localhost:8080/requirejs/require.js"></script>
   <script>
     require({
-      baseUrl: '..',
+      baseUrl: '//localhost:8080/',
       packages: [],
       paths: {
-        text: 'orion/requirejs/text',
-        i18n: 'orion/requirejs/i18n',
-        domReady: 'orion/requirejs/domReady'
+        i18n:"//localhost:8080/requirejs/i18n",
+        ext: '//localhost:8040/static'
       }
     }); 
 
-    require(["orion/mlFileClientPlugin"], function(plugin) {
+    require(["ext/orion/mlFileClientPlugin"], function(plugin) {
       plugin.connect();
     });
  </script>

@@ -10,7 +10,7 @@
  ******************************************************************************/
 
 /*eslint-env browser, amd*/
-define(["orion/Deferred", "orion/plugin", "orion/mlFileImpl", "domReady!"], function(Deferred, PluginProvider, FileServiceImpl) {
+define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl", 'orion/webui/dialog',"requirejs/domReady!"], function(Deferred, PluginProvider, FileServiceImpl,dialog) {
   function trace(implementation) {
     var method;
     var traced = {};
@@ -34,6 +34,30 @@ define(["orion/Deferred", "orion/plugin", "orion/mlFileImpl", "domReady!"], func
     }
     return traced;
   }
+
+  function CompileDialog(options) {
+    this._init(options);
+  }
+  
+/* Use the Dialog prototype to inherit the common dialog behavior.  */
+  CompileDialog.prototype = new dialog.Dialog();
+  CompileDialog.prototype.TEMPLATE ='<div style="width:400px;height:300px;">test<div id="messages" style="padding: 2px 0 0; width: 100%;"></div></div>'
+
+  CompileDialog.prototype._init = function(options) {
+    this.title = "My Modal Dialog";
+    this.messages=options.messages;
+    this.modal = true;
+    this.buttons = [{text: 'ok', callback: this.done.bind(this)}]; 
+    this._initialize();
+}
+CompileDialog.prototype.done=function() {
+  console.log('done')
+}
+CompileDialog.prototype.constructor = CompileDialog;
+  
+//  CompileDialog.prototype._bindToDom = function(parent) {
+//    this.$messages.textContent=this.messages.toString()
+//  }
 
   var tryParentRelative = true;
   function makeParentRelative(location) {
@@ -95,7 +119,29 @@ provider.registerServiceProvider("orion.edit.command", {
  }, {
    contentType: ["application/xquery"],
    name : "PrettyPrint",
-   id : "mp.prettyprint",
+   id : "ml.prettyprint",
+ });
+
+provider.registerServiceProvider("orion.navigate.command", {
+  run:function(item) {
+    console.log(item);
+    var dialog=new CompileDialog({messages:['messages','ok']})
+    dialog.show()
+    setTimeout(function(){
+      dialog.destroy()
+    },1000)
+    return 'result'
+  }
+}, {
+   image: "/static/orion/images/compile-run-icon.png",
+   validationProperties: [
+          {source: "Name", match: '[.]xq'}
+    ],
+   showGlobally:true,
+   name: "Compile",
+   id: "ml.compile",
+   forceSingleItem: true,
+   tooltip: "Compile an xquery module"
  });
     provider.registerService("orion.cm.managedservice",
          {  updated: function(properties) {
