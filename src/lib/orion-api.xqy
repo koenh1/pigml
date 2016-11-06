@@ -125,11 +125,14 @@ declare function orion-api:compile-get-request($path as xs:string) as object-nod
 declare function orion-api:validate-get-request($path as xs:string) as object-node() {
 	let $uri:=ml-uri($path)
 	let $type:=uri-content-type($uri)
+	let $doc:=doc($uri)
+	let $hash:=document-hash($doc)
+	let $_:=xdmp:add-response-header('ETag',$hash)
 	return switch($type)
 	case 'text/html' return object-node {
 		"uri":$uri,
 		"problems":array-node {
-			xdmp:tidy(xdmp:quote(doc($uri)),<options xmlns="xdmp:tidy">
+			xdmp:tidy(xdmp:quote($doc),<options xmlns="xdmp:tidy">
 		<doctype>transitional</doctype></options>)[1]/(tidy:warning|tidy:error)! object-node {
 				"description":./data(),
 				"severity":local-name(.),
@@ -142,7 +145,7 @@ declare function orion-api:validate-get-request($path as xs:string) as object-no
 	case 'application/xquery' return object-node {
 		"uri":$uri,
 		"problems":array-node {
-			try{let $_:=xdmp:pretty-print(xdmp:quote(doc($uri))) return ()}catch($ex){$ex!object-node { 
+			try{let $_:=xdmp:pretty-print(xdmp:quote($doc)) return ()}catch($ex){$ex!object-node { 
 					"description":concat(./error:message/data(),' ,',./error:data/error:datum[1]/data()),
 					"line":./error:stack/error:frame[1]/error:line/xs:int(.),
 					"severity":"warning",
@@ -156,8 +159,7 @@ declare function orion-api:validate-get-request($path as xs:string) as object-no
 		"uri":$uri,
 		"problems":array-node {
 			try{
-				let $d0:=doc($uri)
-				let $d:=if ($d0/element()) then $d0 else xdmp:unquote(xdmp:quote($d0)) 
+				let $d:=if ($doc/element()) then $doc else xdmp:unquote(xdmp:quote($doc)) 
 				return if (xdmp:describe(sc:type($d))!='(any(lax,!())*)|#PCDATA') then 
 					let $error:=xdmp:validate($d)/error:error
 					return if (fn:empty($error)) then ()
@@ -411,7 +413,7 @@ declare private function orion-api:file($uri as xs:string,$depth as xs:int,$incl
 		"Attributes":object-node {
 		    "Executable": $directory,
 		    "Immutable": false(),
-		    "ReadOnly": true(),
+		    "ReadOnly": false(),
 		    "SymLink": false()
 		 },
 		"Directory":false(),
@@ -501,7 +503,9 @@ declare function orion-api:file-post-request($path as xs:string) {
 			let $ndoc0:=document{text{fn:fold-left(function($a,$diff){orion-api:patch($a,$diff/start!xs:integer(.),$diff/end!xs:integer(.),$diff/text/data())},xdmp:quote($doc),$body/diff)}}
 			let $ndoc:=ensure-type($uri,$ndoc0)
 			let $_:=xdmp:node-replace($doc,$ndoc)
-			return orion-api:file($uri,0,false(),$ts,document-length($ndoc),document-hash($ndoc))
+			let $nhash:=document-hash($ndoc)
+			let $_:=xdmp:add-response-header('ETag',$nhash)
+			return orion-api:file($uri,0,false(),$ts,document-length($ndoc),$nhash)
 		else
 			xdmp:set-response-code(414,"document "||$uri||" changed "||$ifmatch||"!="||$hash)
 	else
@@ -569,6 +573,8 @@ declare function orion-api:file-put-request($path as xs:string) {
 				let $realdoc:=ensure-type($uri,$body)
 				let $_:=if ($exists) then xdmp:node-replace($doc,$realdoc)
 				else xdmp:document-insert($uri,$realdoc)
+				let $nhash:=document-hash($realdoc)
+				let $_:=xdmp:add-response-header('ETag',$nhash)
 				return orion-api:file($uri,1,false(),$ts,document-length($realdoc),document-hash($realdoc))
 			else
 				xdmp:set-response-code(414,"document "||$uri||" changed "||$ifmatch||"!="||$hash)
