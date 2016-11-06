@@ -38,7 +38,7 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","ext/orion/xmlp
 
 
   function connect() {
-     var headers = { login:new URL("/file", self.location.href).href,name: "Connect Orion Plugin", version: "1.0", description: "Connect Orion Plugin." };
+     var headers = { login:new URL("/login", self.location.href).href,name: "Connect Orion Plugin", version: "1.0", description: "Connect Orion Plugin." };
      console.log(headers)
      var provider = new PluginProvider(headers);
      registerServiceProviders(provider)
@@ -60,7 +60,6 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","ext/orion/xmlp
     var service = new FileServiceImpl(fileBase, workspaceBase);
     //provider.registerService("orion.core.file", trace(service), {
     provider.registerService("orion.core.file", service, {
-      //Name: 'Orion Content',  // HACK  see https://bugs.eclipse.org/bugs/show_bug.cgi?id=386509
       Name: "ML Content",
       nls: 'orion/navigate/nls/messages',
       top: fileBase,
@@ -103,27 +102,19 @@ provider.registerServiceProvider("orion.edit.contentAssist",
 
       computeContentAssist:function(editorContext, options) {
         var result=new Deferred()
-        var keywords = [ "break", "case", "catch", "continue", "debugger", "default", "delete", "do", "else",
-                         "finally", "for", "function", "if", "in", "instanceof", "new", "return", "switch",
-                         "this", "throw", "try", "typeof", "var", "void", "while", "with" ];
-        var proposals = [];
-        console.log(options)
         editorContext.getText(0,options.offset).then(function(text){
           var xpath=parser.parse(text)
-          console.log(xpath)
-          if (xpath.match(/\/text\(\)(\[\d+\])?$/)) result.resolve([])
-          for (var i=0; i < keywords.length; i++) {
-              var keyword = keywords[i];
-              if (keyword.indexOf(options.prefix.substring(1)) === 0) {
-                  proposals.push({
-                      proposal: ('"'+keyword+'"').substring(options.prefix.length),
-                      description: keyword
-                  });
-              }
-           }
-           result.resolve(proposals)
-          }
-        )
+//          console.log([text,xpath])
+          var proposals = [];
+          if (xpath.match(/\/text\(\)(\[\d+\])?$/)) return result.resolve(proposals); 
+          editorContext.getFileMetadata().then(function(meta) {
+          service.contentAssist(meta.location,xpath,options.prefix).then(function(response) {
+ //             console.log(response)
+ //             console.log(response.values)
+              result.resolve(response.values)
+            });
+          });
+        })
         return result;
       }
     },

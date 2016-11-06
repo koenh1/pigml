@@ -27,6 +27,7 @@ declare function orion-api:main() {
 	case 'POST' return
 		switch($api)
 		case 'file' return orion-api:file-post-request($path)
+		case 'assist' return orion-api:assist-post-request($path)
 		case 'workspace' return orion-api:workspace-post-request($path)
 		case 'pretty-print' return orion-api:pretty-print-post-request($path)
 		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
@@ -86,6 +87,40 @@ declare function orion-api:pretty-print-post-request($path as xs:string) as xs:s
 	return switch($content-type)
 	case 'application/xquery' return try{fn:replace(xdmp:pretty-print($text),'[%]Q[{]http://www.w3.org/2012/xquery[}]private(&#10;)?','private ')}catch($ex){$text}
 	default return $text
+};
+
+declare function orion-api:assist-post-request($path as xs:string) as object-node() {
+	let $uri:=ml-uri($path)
+	let $doc:=doc($uri)
+	let $_:=xdmp:set-response-content-type('application/json')
+	let $data as object-node():=xdmp:unquote(xdmp:get-request-body("text"))/object-node()
+	let $xpath as xs:string:=$data/xpath/data()
+	let $prefix as xs:string:=$data/prefix/data()
+	let $nsprefixes:=distinct-values(tokenize($xpath,'/')[contains(.,':')]!substring-before(.,':'))
+	let $ns as map:map:=map:new(for $nsprefix in $nsprefixes return $doc/*/namespace::*[name()=$nsprefix][1]!map:entry($nsprefix,.))
+	let $values:=if ($doc/*) then 
+		try{
+			let $node as node():=xdmp:value(concat('$doc',if (ends-with($xpath,'/@')) then substring($xpath,1,string-length($xpath)-2) else $xpath),$ns)
+			return typeswitch($node)
+			case attribute() return
+			let $type:=sc:type($node)
+			return sc:facets(sc:type($node))[sc:name(.)=xs:QName('xs:enumeration')]!sc:component-property('value',.)
+			case element() return
+				let $revns:=map:new(map:keys($ns)!map:entry(string(map:get($ns,.)),.))
+				return if (ends-with($xpath,'/@')) then
+					let $qnames:=sc:attributes(sc:type($node))!sc:name(.)[not($node/@*!node-name(.)=.)]
+					return 
+						($qnames[contains(string(.),':')]!concat(map:get($revns,namespace-uri-from-QName(.)),':',substring-after(string(.),':')),
+							$qnames[not(contains(string(.),':'))]!string(.))!concat(.,'="')
+				else ()
+			default return ()
+		} catch ($ex) {(xdmp:describe($ex,(),()))}
+	else ()
+	return object-node {
+		"xpath":$xpath,
+		"prefix":$prefix,
+		"values":array-node{$values}
+	}
 };
 
 declare function orion-api:compile-get-request($path as xs:string) as object-node() {

@@ -1,39 +1,51 @@
 //* return an xpath for a prefix of an xml file */
 
 {
-	var elements = [];
-	var counts=[{}];
-	var attributen=null;
-	var textnodes=[];
+  	var elements = [];
+    	var counts=[{}];
+    	var attributen=null;
+    	var textnodes=[];
+      var pos=0
+      var inatts=false;
+      var elementContent=function() {
+      	inatts=false;
+      }
+    	var xpath=function() {
+        	var x=elements.map(function(e,i){return e+(i?('['+counts[i][e]+']'):'')}).join('/')
+            if (attributen!=null) x+='/@'+attributen
+            else if (textnodes[textnodes.length-1]) x+='/text()['+textnodes[textnodes.length-1]+']'
+            else if (inatts) x+='/@'
+            return '/'+x
+        }
+        var startText=function() {
+    		attributen=null;
+    		inatts=false;
+        	textnodes.push(textnodes.pop()+1)
+        }
+    	var startElement = function(e) {
+    		inatts=true;
+    		var c=counts[counts.length-1];
+    		if (c[e]) {c[e]++} else c[e]=1;
+    		elements.push(e);
+    		attributen=null;
+    		textnodes.push(0);
+    		counts.push({})
+    	}
+    	var attribute=function(n) {
+        if (pos<=peg$currPos) {
+    		  attributen=n;
+          pos=peg$currPos
+ //         console.log(n+':'+xpath()+";"+peg$currPos)
+        }
+    	}
 
-	var xpath=function() {
-    	var x=elements.map(function(e,i){return e+(i?('['+counts[i][e]+']'):'')}).join('/')
-        if (attributen!=null) x+='/@'+attributen
-        else if (textnodes[textnodes.length-1]) x+='/text()['+textnodes[textnodes.length-1]+']'
-        return '/'+x
-    }
-    var startText=function() {
-		attributen=null;
-    	textnodes.push(textnodes.pop()+1)
-    }
-	var startElement = function(e) {
-		var c=counts[counts.length-1];
-		if (c[e]) {c[e]++} else c[e]=1;
-		elements.push(e);
-		attributen=null;
-		textnodes.push(0);
-		counts.push({})
-	}
-	var attribute=function(n,v) {
-		attributen=n;
-	}
-
-	var endElement = function() {
-		attributen=null;
-		elements.pop();
-		counts.pop();
-		textnodes.pop();
-	}
+    	var endElement = function() {
+    		attributen=null;
+    		inatts=false;
+    		elements.pop();
+    		counts.pop();
+    		textnodes.pop();
+    	}
 
 }
 
@@ -125,6 +137,7 @@ QualifiedIdentifier3 "qualified identifier3"
 StartTag
 	= '<' qid:QualifiedIdentifier1 attributes:Attribute* _ '>'
 		{
+			elementContent()
 			return true;
 		}
 
@@ -138,6 +151,7 @@ EndTag
 ClosedTag
 	= '<' qid:QualifiedIdentifier2 attributes:Attribute* _ '/>'
 		{
+			elementContent()
 			endElement()
 			return true;
 		}

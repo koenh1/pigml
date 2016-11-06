@@ -187,6 +187,23 @@ define(["orion/Deferred", "orion/xhr", "orion/URL-shim", "orion/operation", "ori
 	FileServiceImpl.prototype = /**@lends eclipse.FileServiceImpl.prototype */
 	{
 
+		contentAssist:function(location,xpath,prefix) {
+			return _xhr("POST", location.replace(/\/file\//,'/assist/'), {
+				headers: {
+					"Orion-Version": "1",
+					"Content-Type": "application/json;charset=UTF-8"
+				},
+				data:JSON.stringify({
+					xpath:xpath,
+					prefix:prefix
+				}),
+				timeout: 15000
+			}).then(function(result) {
+				var jsonData = result.response ? JSON.parse(result.response) : {};
+				return jsonData;
+			}.bind(this));
+		},
+
 		compile:function(location) {
 			return _xhr("GET", location.replace(/\/file\//,'/compile/'), {
 				headers: {
