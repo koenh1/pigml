@@ -34,19 +34,30 @@
 
 	var params = parseQuery();
 
-
+	var start,end;
 require(["ext/orion/mlFileImpl"], function(FileServiceImpl) {
     var service = new FileServiceImpl(params.fileBase, params.workspaceBase);
     service.compile(params.file).then(function(result){
-    	document.getElementById('compileresult').innerHTML=result
+    	var r=JSON.parse(result)
+    	var message=r.message;
+    	if (message!='success') message+=" at line "+r.line+", column "+r.column
+    	document.getElementById('compileresult').innerHTML=message;
+    	start=r.start;
+    	end=r.end;
 	})	
 })
 		function done() {
-			window.parent.postMessage(JSON.stringify({
-			pageService: "orion.page.delegatedUI",
-			source: "ml.compile",
-			cancelled: true
-		}), "*");
+			window.parent.postMessage(JSON.stringify(
+				start? {
+					pageService: "orion.page.delegatedUI",
+					source: "ml.compile",
+					result:{selection:{start:start,end:end}}
+				} :
+				{
+				pageService: "orion.page.delegatedUI",
+				source: "ml.compile",
+				cancelled: true
+			}), "*");
 	  }
 	  setTimeout(done,60000)
 	</script>

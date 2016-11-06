@@ -106,11 +106,18 @@ declare function orion-api:compile-get-request($path as xs:string) as object-nod
 		  (xs:QName('uri'),$tempfile),<options xmlns="xdmp:eval"><database>{xdmp:modules-database()}</database><isolation>different-transaction</isolation></options>)
 		return $r
 
-		return if (fn:empty($result)) then object-node{"message":"success"} else document{$result}/error:error!object-node{
+		return if (fn:empty($result)) then object-node{"message":"success"} else document{$result}/error:error!(
+			let $line as xs:int:=./error:stack/error:frame[1]/error:line/xs:int(.)
+			let $column as xs:int:=./error:stack/error:frame[1]/error:column/xs:int(.)
+			let $start:=sum(fn:tokenize($text,'&#10;')[1 to $line -1]!(string-length(.)+1))+$column
+			let $end:=$start+string-length(fn:tokenize($text,'&#10;')[$line])-$column
+			return object-node{
 		  "message":./error:format-string/data(),
-		  "line":./error:stack/error:frame[1]/error:line/xs:int(.),
-		  "column":./error:stack/error:frame[1]/error:column/xs:int(.)
-		  }
+		  "line":$line,
+		  "column":$column,
+		  "start":$start,
+		  "end":$end
+		  })
 
 	default return ()
 };

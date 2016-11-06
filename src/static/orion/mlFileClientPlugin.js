@@ -68,7 +68,11 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","requirejs/domR
       pattern: [fileBase, workspaceBase, importBase]
     });
 
-  provider.registerServiceProvider("orion.edit.validator", service,{ contentType: ['text/html','application/xquery',"text/xml","application/xml",'application/xslt+xml','application/rdf+xml','application/atom+xml','application/owl+xml','image/svg+xml','application/vnd.marklogic-tde+xml','application/vnd.marklogic.triples+xml','application/xhtml+xml']});
+  provider.registerServiceProvider("orion.edit.validator", service,
+    { 
+      name:"marklogic validator",
+      contentType: ['text/html','application/xquery',"text/xml","application/xml",'application/xslt+xml','application/rdf+xml','application/atom+xml','application/owl+xml','image/svg+xml','application/vnd.marklogic-tde+xml','application/vnd.marklogic.triples+xml','application/xhtml+xml']}
+    );
 
   provider.registerServiceProvider("orion.edit.command", {
    run : function(selectedText, text, selection) {
@@ -77,6 +81,7 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","requirejs/domR
  }, {
    contentType: ["application/xquery"],
    name : "PrettyPrint",
+   key:["p",true],
    id : "ml.prettyprint",
  });
 
@@ -88,6 +93,7 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","requirejs/domR
    }
  }, {
    contentType: ["application/xquery"],
+   key: ['r',true],
    name : "Compile",
    id : "ml.compile",
  });
