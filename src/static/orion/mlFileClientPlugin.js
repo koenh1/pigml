@@ -10,7 +10,7 @@
  ******************************************************************************/
 
 /*eslint-env browser, amd*/
-define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl", 'orion/webui/dialog',"requirejs/domReady!"], function(Deferred, PluginProvider, FileServiceImpl,dialog) {
+define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","requirejs/domReady!"], function(Deferred, PluginProvider, FileServiceImpl) {
   function trace(implementation) {
     var method;
     var traced = {};
@@ -35,69 +35,27 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl", 'orion/webui/d
     return traced;
   }
 
-  function CompileDialog(options) {
-    this._init(options);
-  }
-  
-/* Use the Dialog prototype to inherit the common dialog behavior.  */
-  CompileDialog.prototype = new dialog.Dialog();
-  CompileDialog.prototype.TEMPLATE ='<div style="width:400px;height:300px;">test<div id="messages" style="padding: 2px 0 0; width: 100%;"></div></div>'
-
-  CompileDialog.prototype._init = function(options) {
-    this.title = "My Modal Dialog";
-    this.messages=options.messages;
-    this.modal = true;
-    this.buttons = [{text: 'ok', callback: this.done.bind(this)}]; 
-    this._initialize();
-}
-CompileDialog.prototype.done=function() {
-  console.log('done')
-}
-CompileDialog.prototype.constructor = CompileDialog;
-  
-//  CompileDialog.prototype._bindToDom = function(parent) {
-//    this.$messages.textContent=this.messages.toString()
-//  }
-
-  var tryParentRelative = true;
-  function makeParentRelative(location) {
-    if (tryParentRelative) {
-      try {
-        if (typeof window === "undefined") {
-          return location.substring(self.location.href.indexOf(self.location.host) + self.location.host.length);
-        }
-        if (window.location.host === parent.location.host && window.location.protocol === parent.location.protocol) {
-          return location.substring(parent.location.href.indexOf(parent.location.host) + parent.location.host.length);
-        } else {
-          tryParentRelative = false;
-        }
-      } catch (e) {
-        tryParentRelative = false;
-      }
-    }
-    return location;
-  }
-
 
 
   function connect() {
-    console.log('connecting')
-     var headers = { login:"http://localhost:8040/login",name: "Connect Orion Plugin", version: "1.0", description: "Connect Orion Plugin." };
+     var headers = { login:new URL("/file", self.location.href).href,name: "Connect Orion Plugin", version: "1.0", description: "Connect Orion Plugin." };
+     console.log(headers)
      var provider = new PluginProvider(headers);
      registerServiceProviders(provider)
     provider.connect();
-    console.log('connected')
   }
 
   function registerServiceProviders(provider) {
     // note global
-    var fileBase = "http://localhost:8040/orion/file";
+    var fileBase = new URL("/orion/file", self.location.href).href;
   
     // note global
-    var workspaceBase = "http://localhost:8040/orion/workspace";
+    var workspaceBase = new URL("/orion/workspace", self.location.href).href;
   
     // note global
-    var importBase = "http://localhost:8040/orion/xfer"
+    var importBase = new URL("/orion/xfer", self.location.href).href;
+
+    var compileBase = new URL("/static/orion/compile.html", self.location.href).href;
   
     var service = new FileServiceImpl(fileBase, workspaceBase);
     //provider.registerService("orion.core.file", trace(service), {
@@ -110,9 +68,9 @@ CompileDialog.prototype.constructor = CompileDialog;
       pattern: [fileBase, workspaceBase, importBase]
     });
 
-    provider.registerServiceProvider("orion.edit.validator", service,{ contentType: ['text/html','application/xquery',"text/xml","application/xml",'application/xslt+xml','application/rdf+xml','application/atom+xml','application/owl+xml','image/svg+xml','application/vnd.marklogic-tde+xml','application/vnd.marklogic.triples+xml','application/xhtml+xml']});
+  provider.registerServiceProvider("orion.edit.validator", service,{ contentType: ['text/html','application/xquery',"text/xml","application/xml",'application/xslt+xml','application/rdf+xml','application/atom+xml','application/owl+xml','image/svg+xml','application/vnd.marklogic-tde+xml','application/vnd.marklogic.triples+xml','application/xhtml+xml']});
 
-provider.registerServiceProvider("orion.edit.command", {
+  provider.registerServiceProvider("orion.edit.command", {
    run : function(selectedText, text, selection) {
      return service.prettyPrint(text,'application/xquery')
    }
@@ -122,27 +80,36 @@ provider.registerServiceProvider("orion.edit.command", {
    id : "ml.prettyprint",
  });
 
-provider.registerServiceProvider("orion.navigate.command", {
-  run:function(item) {
-    console.log(item);
-    var dialog=new CompileDialog({messages:['messages','ok']})
-    dialog.show()
-    setTimeout(function(){
-      dialog.destroy()
-    },1000)
-    return 'result'
-  }
-}, {
-   image: "/static/orion/images/compile-run-icon.png",
-   validationProperties: [
-          {source: "Name", match: '[.]xq'}
-    ],
-   showGlobally:true,
-   name: "Compile",
-   id: "ml.compile",
-   forceSingleItem: true,
-   tooltip: "Compile an xquery module"
+  provider.registerServiceProvider("orion.edit.command", {
+   run : function(selectedText, text, selection,fileName) {
+     fileName=fileName.replace(fileBase,'/orion/file')
+     return {uriTemplate: compileBase+"?fileBase="+fileBase+"&workspaceBase="+workspaceBase+"&file=" + fileName, width: "600px", height: "400px"};
+     //return service.compile(text,'application/xquery').then(function(result){console.log(result);window.alert(result)})
+   }
+ }, {
+   contentType: ["application/xquery"],
+   name : "Compile",
+   id : "ml.compile",
  });
+
+/*
+provider.registerServiceProvider("orion.page.link.category", null, {
+      id: "compile",
+      name: "Compile",
+      imageClass: "core-sprite-wrench",
+      order: 20         
+   });
+
+provider.registerServiceProvider("orion.page.link.related", null, {
+    id: "ml.compile",
+    category: "compile", 
+    name: "Compile",
+    contentType: ["application/xquery"],
+    uriTemplate: '//'+document.location.host+"/static/orion/compile.html#{+Location}"
+ });
+*/
+
+
     provider.registerService("orion.cm.managedservice",
          {  updated: function(properties) {
             //console.log(properties)

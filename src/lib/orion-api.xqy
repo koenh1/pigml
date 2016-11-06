@@ -2,6 +2,7 @@ xquery version "1.0-ml";
 module namespace orion-api="http://marklogic.com/lib/xquery/orion-api"; 
 declare namespace prop="http://marklogic.com/xdmp/property";
 declare namespace error="http://marklogic.com/xdmp/error";
+declare namespace s="http://www.w3.org/2005/xpath-functions";
 declare namespace tidy="xdmp:tidy";
 declare option xdmp:mapping "false";
 
@@ -16,6 +17,7 @@ declare function orion-api:main() {
 		case 'validate' return orion-api:validate-get-request($path)
 		case 'workspace' return orion-api:workspace-get-request($path)
 		case 'filesearch' return orion-api:filesearch-get-request($path)
+		case 'compile' return orion-api:compile-get-request($path)
 		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
 	case 'PUT' return
 		switch($api)
@@ -26,7 +28,7 @@ declare function orion-api:main() {
 		switch($api)
 		case 'file' return orion-api:file-post-request($path)
 		case 'workspace' return orion-api:workspace-post-request($path)
-		case 'pretty-print' return orion-api:pretty-print($path)
+		case 'pretty-print' return orion-api:pretty-print-post-request($path)
 		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
 	case 'DELETE' return
 		switch($api)
@@ -77,13 +79,40 @@ declare private function ensure-type($uri as xs:string,$node as node()?) as node
 	else $node
 };
 
-declare function orion-api:pretty-print($path as xs:string) as xs:string {
+declare function orion-api:pretty-print-post-request($path as xs:string) as xs:string? {
 	let $content-type:=xdmp:get-request-header('Content-Type')
 	let $text:=xdmp:get-request-body('text')
 	let $_:=xdmp:set-response-content-type($content-type)
 	return switch($content-type)
 	case 'application/xquery' return try{fn:replace(xdmp:pretty-print($text),'[%]Q[{]http://www.w3.org/2012/xquery[}]private(&#10;)?','private ')}catch($ex){$text}
 	default return $text
+};
+
+declare function orion-api:compile-get-request($path as xs:string) as object-node() {
+	let $uri:=ml-uri($path)
+	let $type:=uri-content-type($uri)
+	let $text:=xdmp:quote(doc($uri))
+	return switch($type)
+	case 'application/xquery' return 
+		let $namespace:=fn:analyze-string($text,'^\s*module\s+namespace\s*([^=]+)\s*=\s*(''([^'']+)''|"([^"]+)")','m')//s:group[@nr=(3,4)]/data()
+		let $result:=if (fn:empty($namespace)) then
+			try{xdmp:eval($text,(),<options xmlns="xdmp:eval"><static-check>true</static-check></options>)}catch($ex){$ex}
+		else
+		let $tempfile:='/temp'||xdmp:random(1000000)||'.xqy'
+		let $_:=xdmp:eval('declare variable $uri external;declare variable $text external;xdmp:document-insert($uri, text{$text})',
+		  (xs:QName('uri'),$tempfile,xs:QName('text'),$text),<options xmlns="xdmp:eval"><database>{xdmp:modules-database()}</database><isolation>different-transaction</isolation></options>)
+		let $r:=try{xdmp:eval(concat("import module namespace x='",$namespace,"' at '",$tempfile,"';&#10;0"),(),<options xmlns="xdmp:eval"><static-check>true</static-check></options>)} catch($ex){$ex}
+		let $_:=xdmp:eval('declare variable $uri external;xdmp:document-delete($uri)',
+		  (xs:QName('uri'),$tempfile),<options xmlns="xdmp:eval"><database>{xdmp:modules-database()}</database><isolation>different-transaction</isolation></options>)
+		return $r
+
+		return if (fn:empty($result)) then object-node{"message":"success"} else document{$result}/error:error!object-node{
+		  "message":./error:format-string/data(),
+		  "line":./error:stack/error:frame[1]/error:line/xs:int(.),
+		  "column":./error:stack/error:frame[1]/error:column/xs:int(.)
+		  }
+
+	default return ()
 };
 
 declare function orion-api:validate-get-request($path as xs:string) as object-node() {

@@ -187,6 +187,17 @@ define(["orion/Deferred", "orion/xhr", "orion/URL-shim", "orion/operation", "ori
 	FileServiceImpl.prototype = /**@lends eclipse.FileServiceImpl.prototype */
 	{
 
+		compile:function(location) {
+			return _xhr("GET", location.replace(/\/file\//,'/compile/'), {
+				headers: {
+					"Orion-Version": "1"
+				},
+				timeout: 15000
+			}).then(function(result) {
+				return result.response;
+			}.bind(this));
+		},
+
 		prettyPrint:function(text,contentType) {
 			var result=new Deferred();			
 			_xhr("POST", this.workspaceBase.replace(/\/workspace/,'/pretty-print'), {

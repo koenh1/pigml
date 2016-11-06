@@ -1,0 +1,64 @@
+<html>
+<head>
+		<style>
+		body {
+			background: white;
+		}
+		.option {
+			padding: 10px;
+		}
+	</style>
+ 	 <script src="//localhost:8080/requirejs/require.js"></script>
+	<script id="compile">
+    require({
+      baseUrl: '//localhost:8080/',
+      packages: [],
+      paths: {
+        i18n:"//localhost:8080/requirejs/i18n",
+        ext: '//localhost:8040/static'
+      }
+    }); 
+    function parseQuery() {
+		var query = window.location.search.substr(1).split("&");
+		var params = Object.create(null);
+		for (var i=0; i < query.length; i++) {
+			var name = query[i], match = /(.*)=(.*)$/.exec(name);
+			if (match) {
+				params[match[1]] = match[2];
+			} else {
+				params[name] = null;
+			}
+		}
+		return params;
+	}
+
+	var params = parseQuery();
+
+
+require(["ext/orion/mlFileImpl"], function(FileServiceImpl) {
+    var service = new FileServiceImpl(params.fileBase, params.workspaceBase);
+    service.compile(params.file).then(function(result){
+    	document.getElementById('compileresult').innerHTML=result
+	})	
+})
+		function done() {
+			window.parent.postMessage(JSON.stringify({
+			pageService: "orion.page.delegatedUI",
+			source: "ml.compile",
+			cancelled: true
+		}), "*");
+	  }
+	  setTimeout(done,60000)
+	</script>
+</head>
+<body>
+	<h4>Compiling <span id="compilefilename">file</span></h4>
+	<div id="compileresult">
+		Compiling...
+	</div>
+	<script>
+	    document.getElementById('compilefilename').innerHTML=params.file;
+	</script>
+</body>
+	<button onclick="done()">Ok</button>
+</html>
