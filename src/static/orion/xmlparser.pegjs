@@ -1,51 +1,85 @@
 //* return an xpath for a prefix of an xml file */
 
 {
-  	var elements = [];
-    	var counts=[{}];
-    	var attributen=null;
-    	var textnodes=[];
-      var pos=0
-      var inatts=false;
-      var elementContent=function() {
-      	inatts=false;
-      }
-    	var xpath=function() {
-        	var x=elements.map(function(e,i){return e+(i?('['+counts[i][e]+']'):'')}).join('/')
-            if (attributen!=null) x+='/@'+attributen
-            else if (textnodes[textnodes.length-1]) x+='/text()['+textnodes[textnodes.length-1]+']'
-            else if (inatts) x+='/@'
-            return '/'+x
-        }
-        var startText=function() {
-    		attributen=null;
-    		inatts=false;
-        	textnodes.push(textnodes.pop()+1)
-        }
-    	var startElement = function(e) {
-    		inatts=true;
-    		var c=counts[counts.length-1];
-    		if (c[e]) {c[e]++} else c[e]=1;
-    		elements.push(e);
-    		attributen=null;
-    		textnodes.push(0);
-    		counts.push({})
-    	}
-    	var attribute=function(n) {
-        if (pos<=peg$currPos) {
-    		  attributen=n;
-          pos=peg$currPos
- //         console.log(n+':'+xpath()+";"+peg$currPos)
-        }
-    	}
+       var elements = [];
+          var counts=[[],[]];
+          var attributen=null;
+          var textnodes=[];
+          var ns=[];
+          var pos=0
+          var inatts=false;
+          var elementContent=function() {
+            inatts=false;
+          }
+          function count(i,e) {
+            return counts[i].reduce(function(a,b){return b==e?a+1:a},0)
+          }
+          function xpath() {
+              var x=elements.map(function(e,i){return e+(i?('['+count(i+1,e)+']'):'')}).join('/')
+                if (attributen!=null) x+='/@'+attributen
+                else if (textnodes[textnodes.length-1]) x+='/text()['+textnodes[textnodes.length-1]+']'
+                else if (inatts) x+='/@'
+                return '/'+x
+           }
+           function namespaces() {
+            return ns.reduce(function(a,b){Object.keys(b).reduce(function(aa,bb){aa[bb]=b[bb];return aa;},a);return a;},{})
+           }
+           function getcounts(l) {
+            var r=[];
+            if (l.length==0) return r;
+            var last=l[0];
+            var c=1;
+            for (var i=1;i<l.length;i++) {
+              if (last!=l[i]) {var cc={};cc[last]=c;r.push(cc);c=1;} else c++;
+              last=l[i];
+            }
+            var cc={};cc[last]=c;r.push(cc);
+            return r;
+          }
+           function info() {
+            return {xpath:xpath(),ns:namespaces(),context:getcounts(counts.reduce(function(a,b){return b.length?b:a},[]))}
+           }
+           function startText() {
+            attributen=null;
+            inatts=false;
+              textnodes.push(textnodes.pop()+1)
+            }
+          function startElement(e) {
+            inatts=true;
+            counts[counts.length-1].push(e);
+            elements.push(e);
+            attributen=null;
+            textnodes.push(0);
+            counts.push([])
+            ns.push({})
+          }
+          function attributeValue(v) {
+            if (pos<=peg$currPos&&attributen!=null) {
+              var nst=ns[ns.length-1];
+              if (attributen.startsWith('xmlns:')) nst[attributen.substring(6)]=v;
+              else if (attributen=='xmlns') nst['']=v;
+            attributen=null;
+              pos=peg$currPos
+            }
+            }
+          function attribute(n) {
+            if (pos<=peg$currPos) {
+              attributen=n;
+              pos=peg$currPos
+            }
+          }
 
-    	var endElement = function() {
-    		attributen=null;
-    		inatts=false;
-    		elements.pop();
-    		counts.pop();
-    		textnodes.pop();
-    	}
+          function endElement() {
+            if (pos<=peg$currPos) {
+              attributen=null;
+              inatts=false;
+              elements.pop();
+              counts.pop();
+              textnodes.pop();
+              ns.pop();
+              pos=peg$currPos
+            }
+          }
 
 }
 
@@ -198,9 +232,9 @@ Attribute
 		}
 
 AttributeValue "attribute value"
-	= QUOTEDSTRING {
-		attribute(null)
-		return true
+	= s:STRING {
+		attributeValue(s)
+		return s
 	}
 
 ////////////////////////////////////////////////////

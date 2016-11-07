@@ -187,14 +187,14 @@ define(["orion/Deferred", "orion/xhr", "orion/URL-shim", "orion/operation", "ori
 	FileServiceImpl.prototype = /**@lends eclipse.FileServiceImpl.prototype */
 	{
 
-		contentAssist:function(location,xpath,prefix) {
+		contentAssist:function(location,info,prefix) {
 			return _xhr("POST", location.replace(/\/file\//,'/assist/'), {
 				headers: {
 					"Orion-Version": "1",
 					"Content-Type": "application/json;charset=UTF-8"
 				},
 				data:JSON.stringify({
-					xpath:xpath,
+					info:info,
 					prefix:prefix
 				}),
 				timeout: 15000

@@ -1,5 +1,5 @@
 define([],function() {
-  "use strict";
+ "use strict";
 
   function peg$subclass(child, parent) {
     function ctor() { this.constructor = child; }
@@ -267,9 +267,9 @@ define([],function() {
               return true;
             },
         peg$c108 = peg$otherExpectation("attribute value"),
-        peg$c109 = function() {
-            attribute(null)
-            return true
+        peg$c109 = function(s) {
+            attributeValue(s)
+            return s
           },
         peg$c110 = "<?",
         peg$c111 = peg$literalExpectation("<?", false),
@@ -1767,10 +1767,10 @@ define([],function() {
 
       peg$silentFails++;
       s0 = peg$currPos;
-      s1 = peg$parseQUOTEDSTRING();
+      s1 = peg$parseSTRING();
       if (s1 !== peg$FAILED) {
         peg$savedPos = s0;
-        s1 = peg$c109();
+        s1 = peg$c109(s1);
       }
       s0 = s1;
       peg$silentFails--;
@@ -2286,58 +2286,94 @@ define([],function() {
 
 
         var elements = [];
-          var counts=[{}];
+          var counts=[[],[]];
           var attributen=null;
           var textnodes=[];
+          var ns=[];
           var pos=0
           var inatts=false;
           var elementContent=function() {
             inatts=false;
           }
-          var xpath=function() {
-              var x=elements.map(function(e,i){return e+(i?('['+counts[i][e]+']'):'')}).join('/')
+          function count(i,e) {
+            return counts[i].reduce(function(a,b){return b==e?a+1:a},0)
+          }
+          function xpath() {
+              var x=elements.map(function(e,i){return e+(i?('['+count(i+1,e)+']'):'')}).join('/')
                 if (attributen!=null) x+='/@'+attributen
                 else if (textnodes[textnodes.length-1]) x+='/text()['+textnodes[textnodes.length-1]+']'
                 else if (inatts) x+='/@'
                 return '/'+x
+           }
+           function namespaces() {
+            return ns.reduce(function(a,b){Object.keys(b).reduce(function(aa,bb){aa[bb]=b[bb];return aa;},a);return a;},{})
+           }
+           function getcounts(l) {
+            var r=[];
+            if (l.length==0) return r;
+            var last=l[0];
+            var c=1;
+            for (var i=1;i<l.length;i++) {
+              if (last!=l[i]) {var cc={};cc[last]=c;r.push(cc);c=1;} else c++;
+              last=l[i];
             }
-            var startText=function() {
+            var cc={};cc[last]=c;r.push(cc);
+            return r;
+          }
+           function info() {
+            return {xpath:xpath(),ns:namespaces(),context:getcounts(counts.reduce(function(a,b){return b.length?b:a},[]))}
+           }
+           function startText() {
             attributen=null;
             inatts=false;
               textnodes.push(textnodes.pop()+1)
             }
-          var startElement = function(e) {
+          function startElement(e) {
             inatts=true;
-            var c=counts[counts.length-1];
-            if (c[e]) {c[e]++} else c[e]=1;
+            counts[counts.length-1].push(e);
             elements.push(e);
             attributen=null;
             textnodes.push(0);
-            counts.push({})
+            counts.push([])
+            ns.push({})
           }
-          var attribute=function(n) {
+          function attributeValue(v) {
+            if (pos<=peg$currPos&&attributen!=null) {
+              var nst=ns[ns.length-1];
+              if (attributen.startsWith('xmlns:')) nst[attributen.substring(6)]=v;
+              else if (attributen=='xmlns') nst['']=v;
+            attributen=null;
+              pos=peg$currPos
+            }
+            }
+          function attribute(n) {
             if (pos<=peg$currPos) {
               attributen=n;
               pos=peg$currPos
-     //         console.log(n+':'+xpath()+";"+peg$currPos)
             }
           }
 
-          var endElement = function() {
-            attributen=null;
-            inatts=false;
-            elements.pop();
-            counts.pop();
-            textnodes.pop();
+          function endElement() {
+            if (pos<=peg$currPos) {
+              attributen=null;
+              inatts=false;
+              elements.pop();
+              counts.pop();
+              textnodes.pop();
+              ns.pop();
+              pos=peg$currPos
+            }
           }
 
 
-   peg$result = peg$startRuleFunction();
-   return xpath();
+
+    peg$result = peg$startRuleFunction();
+
+   return info();
 
   }
 //  var s='<x p="1"><y/><y v="2" t="fasfd">test</y></x>   '
-//  for (var i=0;i<s.length;i++) {
+// for (var i=0;i<s.length;i++) {
 //    var t=s.substring(0,i)
 //    console.log(t)
 //    console.log(peg$parse(t))

@@ -94,24 +94,24 @@ declare function orion-api:assist-post-request($path as xs:string) as object-nod
 	let $doc:=doc($uri)
 	let $_:=xdmp:set-response-content-type('application/json')
 	let $data as object-node():=xdmp:unquote(xdmp:get-request-body("text"))/object-node()
-	let $xpath as xs:string:=$data/xpath/data()
+	let $xpath as xs:string:=$data/info/xpath/data()
 	let $prefix as xs:string:=$data/prefix/data()
 	let $nsprefixes:=distinct-values(tokenize($xpath,'/')[contains(.,':')]!substring-before(.,':'))
-	let $ns as map:map:=map:new(for $nsprefix in $nsprefixes return $doc/*/namespace::*[name()=$nsprefix][1]!map:entry($nsprefix,.))
+	let $ns as map:map:=$data/info/ns
 	let $values:=if ($doc/*) then 
 		try{
 			let $node as node():=xdmp:value(concat('$doc',if (ends-with($xpath,'/@')) then substring($xpath,1,string-length($xpath)-2) else $xpath),$ns)
 			return typeswitch($node)
 			case attribute() return
 			let $type:=sc:type($node)
-			return sc:facets(sc:type($node))[sc:name(.)=xs:QName('xs:enumeration')]!sc:component-property('value',.)
+			return sc:facets(sc:type($node))[sc:name(.)=xs:QName('xs:enumeration')]!sc:component-property('value',.)[starts-with(.,$prefix)]!substring-after(.,$prefix)
 			case element() return
 				let $revns:=map:new(map:keys($ns)!map:entry(string(map:get($ns,.)),.))
 				return if (ends-with($xpath,'/@')) then
 					let $qnames:=sc:attributes(sc:type($node))!sc:name(.)[not($node/@*!node-name(.)=.)]
 					return 
 						($qnames[contains(string(.),':')]!concat(map:get($revns,namespace-uri-from-QName(.)),':',substring-after(string(.),':')),
-							$qnames[not(contains(string(.),':'))]!string(.))!concat(.,'="')
+							$qnames[not(contains(string(.),':'))]!string(.))!concat(' ',.,'=""')
 				else ()
 			default return ()
 		} catch ($ex) {(xdmp:describe($ex,(),()))}
@@ -496,7 +496,7 @@ declare function orion-api:file-get-request($path as xs:string) {
 			let $d:=doc($uri)
 			let $hash:=document-hash($d)
 			let $_:=xdmp:add-response-header('ETag',$hash)
-			let $_:=if ($d/text()) then xdmp:add-response-header('Accept-Patch','application/json-patch; charset=UTF-8') else ()
+			let $_:=if ($d/text() and not(contains(uri-content-type($uri),'xml'))) then xdmp:add-response-header('Accept-Patch','application/json-patch; charset=UTF-8') else ()
 			return if (fn:empty($d)) then text{''} else $d
 		default return fn:error(xs:QName('orion-api:file-get-request'),'unsupported part '||$part)
 		return if (fn:count($parts)=1) then

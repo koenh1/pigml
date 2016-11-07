@@ -103,12 +103,12 @@ provider.registerServiceProvider("orion.edit.contentAssist",
       computeContentAssist:function(editorContext, options) {
         var result=new Deferred()
         editorContext.getText(0,options.offset).then(function(text){
-          var xpath=parser.parse(text)
+          var info=parser.parse(text)
 //          console.log([text,xpath])
           var proposals = [];
-          if (xpath.match(/\/text\(\)(\[\d+\])?$/)) return result.resolve(proposals); 
+          if (info.xpath.match(/\/text\(\)(\[\d+\])?$/)) return result.resolve(proposals); 
           editorContext.getFileMetadata().then(function(meta) {
-          service.contentAssist(meta.location,xpath,options.prefix).then(function(response) {
+          service.contentAssist(meta.location,info,options.prefix).then(function(response) {
  //             console.log(response)
  //             console.log(response.values)
               result.resolve(response.values)
