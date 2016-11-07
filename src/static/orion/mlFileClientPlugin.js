@@ -104,13 +104,9 @@ provider.registerServiceProvider("orion.edit.contentAssist",
         var result=new Deferred()
         editorContext.getText(0,options.offset).then(function(text){
           var info=parser.parse(text)
-//          console.log([text,xpath])
-          var proposals = [];
-          if (info.xpath.match(/\/text\(\)(\[\d+\])?$/)) return result.resolve(proposals); 
+          if (info.xpath.match(/\/text\(\)(\[\d+\])?$/)) return result.resolve([]); 
           editorContext.getFileMetadata().then(function(meta) {
-          service.contentAssist(meta.location,info,options.prefix).then(function(response) {
- //             console.log(response)
- //             console.log(response.values)
+          service.contentAssist(meta.location,info,options.prefix,true).then(function(response) {
               result.resolve(response.values)
             });
           });
@@ -119,11 +115,75 @@ provider.registerServiceProvider("orion.edit.contentAssist",
       }
     },
    {
-     name: "xml content assist",
+     name: "xml content assist attribute or attribute value",
      charTriggers:"=",
      excludedStyles: "(comment.*)",
      contentType: ["application/xml",'text/xml']
    });
+
+provider.registerServiceProvider("orion.edit.contentAssist",
+   {
+
+      computeContentAssist:function(editorContext, options) {
+        var result=new Deferred()
+        editorContext.getText(0,options.offset).then(function(text){
+          if (text.length<2||text.charAt(text.length-1)!=='/'||text.charAt(text.length-2)!=='<') return result.resolve([])
+          var info=parser.parse(text.substring(0,text.length-2))
+          var e=info.xpath.split('/').filter(function(x){return x.indexOf('(')==-1;}).pop()
+          if (e) {
+            result.resolve([e.split(/\[/)[0]+'>'])
+          } else result.resolve([])
+        })
+        return result;
+      }
+    },
+   {
+     name: "xml content assist close element",
+     charTriggers:"[/]",
+     excludedStyles: "(comment.*)",
+     contentType: ["application/xml",'text/xml']
+   });
+
+provider.registerServiceProvider("orion.edit.contentAssist",
+   {
+
+      computeContentAssist:function(editorContext, options) {
+        var result=new Deferred()
+        editorContext.getText(0,options.offset).then(function(text){
+          if (text.length<1||text.charAt(text.length-1)!=='<') return result.resolve([])
+          var info=parser.parse(text)
+          if (info.xpath.match(/\/text\(\)(\[\d+\])?$/)) return result.resolve([]);
+          if (options.prefix==='') options.prefix='<';
+          editorContext.getFileMetadata().then(function(meta) {
+          service.contentAssist(meta.location,info,options.prefix,true).then(function(response) {
+              result.resolve(response.values)
+            });
+          });
+        })
+        return result;
+      }
+    },
+   {
+     name: "xml content assist open element",
+     charTriggers:"<",
+     excludedStyles: "(comment.*)",
+     contentType: ["application/xml",'text/xml']
+   });
+
+
+provider.registerService("orion.edit.hover", {
+    computeHoverInfo: function(editorContext, ctxt) {
+        if(ctxt.proposal && ctxt.proposal.hover!==null) {
+            return ctxt.proposal.hover;
+        }
+        return null;
+      }
+    }, 
+    {
+      name: 'xml hover',
+      contentType: ["application/xml", "text/xml"] 
+    });
+
 
 
 /*

@@ -97,6 +97,7 @@ declare function orion-api:assist-post-request($path as xs:string) as object-nod
 	let $xpath as xs:string:=$data/info/xpath/data()
 	let $prefix as xs:string:=$data/prefix/data()
 	let $nsprefixes:=distinct-values(tokenize($xpath,'/')[contains(.,':')]!substring-before(.,':'))
+	let $annotations as xs:boolean:=$data/annotations/data()
 	let $ns as map:map:=$data/info/ns
 	let $values:=if ($doc/*) then 
 		try{
@@ -104,15 +105,28 @@ declare function orion-api:assist-post-request($path as xs:string) as object-nod
 			return typeswitch($node)
 			case attribute() return
 			let $type:=sc:type($node)
-			return sc:facets(sc:type($node))[sc:name(.)=xs:QName('xs:enumeration')]!sc:component-property('value',.)[starts-with(.,$prefix)]!substring-after(.,$prefix)
+			return if ($annotations) then (: order of annootations is not preserved, we have to look for the value in the annotation text :)
+				let $values:=sc:facets($type)[sc:name(.)=xs:QName('xs:enumeration')]!sc:component-property('value',.)
+				let $annot:=sc:facets($type)!sc:annotations(.)
+				return 
+					for $value at $pos in $values where starts-with($value,$prefix) return object-node {
+						"proposal":$value,
+						"hover":($annot/xs:documentation[contains(lower-case(.),lower-case($value))][1]/text(),null-node{})[1]
+					}
+			else
+			sc:facets($type)[sc:name(.)=xs:QName('xs:enumeration')]!sc:component-property('value',.)[starts-with(.,$prefix)]!substring-after(.,$prefix)
 			case element() return
+				let $type:=sc:type($node)
 				let $revns:=map:new(map:keys($ns)!map:entry(string(map:get($ns,.)),.))
 				return if (ends-with($xpath,'/@')) then
-					let $qnames:=sc:attributes(sc:type($node))!sc:name(.)[not($node/@*!node-name(.)=.)]
+					let $qnames:=sc:attributes($type)!sc:name(.)[not($node/@*!node-name(.)=.)]
 					return 
-						($qnames[contains(string(.),':')]!concat(map:get($revns,namespace-uri-from-QName(.)),':',substring-after(string(.),':')),
-							$qnames[not(contains(string(.),':'))]!string(.))!concat(' ',.,'=""')
-				else ()
+						fn:distinct-values(($qnames[contains(string(.),':')]!concat(map:get($revns,namespace-uri-from-QName(.)),':',substring-after(string(.),':')),
+							$qnames[not(contains(string(.),':'))]!string(.))!concat(' ',.,'=""'))
+				else 
+					let $nsprefix:=map:get($revns,<x>{sc:schema($node)}</x>/xs:schema/@targetNamespace)[.!='']
+					let $elements:=<x>{sc:type($node)}</x>//xs:element[@name and not(ancestor::xs:element)]/@name/data()
+					return fn:distinct-values($elements)!concat('<',$nsprefix!(concat(.,':')),.,'></',$nsprefix!(concat(.,':')),.,'>')[starts-with(.,$prefix)]!substring-after(.,$prefix)
 			default return ()
 		} catch ($ex) {(xdmp:describe($ex,(),()))}
 	else ()
