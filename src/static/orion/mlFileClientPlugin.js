@@ -104,7 +104,7 @@ provider.registerServiceProvider("orion.edit.contentAssist",
         var result=new Deferred()
         editorContext.getText(0,options.offset).then(function(text){
           var info=parser.parse(text)
-          if (info.xpath.match(/\/text\(\)(\[\d+\])?$/)) return result.resolve([]); 
+          if (text.charAt(text.length-1)=='='&&info.xpath.match(/\/text\(\)(\[\d+\])?$/)) return result.resolve([]); 
           editorContext.getFileMetadata().then(function(meta) {
           service.contentAssist(meta.location,info,options.prefix,true).then(function(response) {
               result.resolve(response.values)

@@ -749,7 +749,7 @@ define(["orion/Deferred", "orion/xhr", "orion/URL-shim", "orion/operation", "ori
 		 */
 		search: function(searchParams) {
 			var query = _generateLuceneQuery(searchParams);
-			return _xhr("GET", this.fileBase + "/../filesearch" + query, {
+			return _xhr("GET", searchParams.resource.replace(/\/file/,'/filesearch') + query, {
 				headers: {
 					"Accept": "application/json",
 					"Orion-Version": "1"
