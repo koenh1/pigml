@@ -4,6 +4,7 @@ declare namespace prop="http://marklogic.com/xdmp/property";
 declare namespace error="http://marklogic.com/xdmp/error";
 declare namespace s="http://www.w3.org/2005/xpath-functions";
 declare namespace tidy="xdmp:tidy";
+declare namespace orion="http://marklogic.com/ns/orion";
 declare option xdmp:mapping "false";
 
 declare function orion-api:main() {
@@ -11,55 +12,58 @@ declare function orion-api:main() {
 	let $path:=xdmp:get-request-field('path')
 	let $parts:=fn:tokenize($path,'/')
 	let $workspace as object-node()?:=if (count($parts) ge 2) then document(concat('/orion/workspace/',$parts[2]))/object-node() else ()
-	let $project as element(project)?:=if (count($parts) ge 3) then document(concat('/orion/workspace/',$parts[2],'/project/',$parts[3]))/* else ()
+	let $project as element(orion:project)?:=if (count($parts) ge 3) then document(concat('/orion/workspace/',$parts[2],'/project/',$parts[3]))/* else ()
 	let $method:=xdmp:get-request-method()
-	return switch($method)
-	case 'GET' return
-		switch($api)
-		case 'file' return orion-api:file-get-request($path,$project)
-		case 'validate' return orion-api:validate-get-request($path,$project)
-		case 'workspace' return orion-api:workspace-get-request($path)
-		case 'filesearch' return orion-api:filesearch-get-request($path,$workspace,$project)
-		case 'compile' return orion-api:compile-get-request($path,$project)
-		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
-	case 'PUT' return
-		switch($api)
-		case 'file' return orion-api:file-put-request($path,$project)
-		case 'workspace' return orion-api:workspace-put-request($path)
-		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
-	case 'POST' return
-		switch($api)
-		case 'file' return orion-api:file-post-request($path,$project)
-		case 'assist' return orion-api:assist-post-request($path,$project)
-		case 'workspace' return orion-api:workspace-post-request($path)
-		case 'pretty-print' return orion-api:pretty-print-post-request($path,$project)
-		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
-	case 'DELETE' return
-		switch($api)
-		case 'file' return orion-api:file-delete-request($path,$project)
-		case 'workspace' return orion-api:workspace-delete-request($path,$project)
-		default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
-	default return fn:error(xs:QName('orion-api:error'),'unsupported method '||$method)
+	return orion-api:main($api,$method,$path,$workspace,$project)
 };
 
-declare private function ml-uri($path as xs:string,$project as element(project)) as xs:string {
-	if (ends-with($path,'/.project.xml') and count(tokenize($path,'/'))=4) then
-		let $parents:=tokenize($path,'/')
-		return concat('/orion/workspace/',$parents[2],'/project/',$parents[3])
-	else
-	concat('/orion/mlfile',xdmp:url-decode($path))
+declare function orion-api:main($api as xs:string,$method as xs:string,$path as xs:string,$workspace as object-node()?,$project as element(orion:project)?) {
+	switch($method)
+		case 'GET' return
+			switch($api)
+			case 'file' return orion-api:file-get-request($path,$project)
+			case 'validate' return orion-api:validate-get-request($path,$project)
+			case 'workspace' return orion-api:workspace-get-request($path)
+			case 'filesearch' return orion-api:filesearch-get-request($path,$workspace,$project)
+			case 'compile' return orion-api:compile-get-request($path,$project)
+			default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
+		case 'PUT' return
+			switch($api)
+			case 'file' return orion-api:file-put-request($path,$project)
+			case 'workspace' return orion-api:workspace-put-request($path)
+			default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
+		case 'POST' return
+			switch($api)
+			case 'file' return orion-api:file-post-request($path,$project)
+			case 'assist' return orion-api:assist-post-request($path,$project)
+			case 'workspace' return orion-api:workspace-post-request($path)
+			case 'pretty-print' return orion-api:pretty-print-post-request($path,$project)
+			default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
+		case 'DELETE' return
+			switch($api)
+			case 'file' return orion-api:file-delete-request($path,$project)
+			case 'workspace' return orion-api:workspace-delete-request($path,$project)
+			default return fn:error(xs:QName('orion-api:error'),'unsupported api '||$api)
+		default return fn:error(xs:QName('orion-api:error'),'unsupported method '||$method)
+};
+
+declare private function ml-uri($path as xs:string,$project as element(orion:project)) as xs:string {
+	if (ends-with($path,'/.project.xml') and count(tokenize($path,'/'))=4) then base-uri($project)
+	else (: assume content location ends with /, see schema :)
+	concat($project/orion:content-location,
+	  xdmp:url-decode(string-join(tokenize($path,'/')[4 to last()],'/')))
 };
 
 declare private function orion-uri($path as xs:string) as xs:string {
 	concat('/orion/file',xdmp:url-decode($path))
 };
 
-declare private function ml-path($uri as xs:string) as xs:string {
+declare private function ml-path($uri as xs:string,$project as element(orion:project)) as xs:string {
 	if (starts-with($uri,'/orion/workspace/')) then
 		let $parents:=fn:tokenize(substring-after($uri,'/orion/workspace/'),'/')
 		return concat('/',$parents[1],'/',$parents[3],'/.project.xml')
 	else
-	substring-after($uri,'/orion/mlfile')
+	concat('/',$project/orion:workspace/data(),'/',$project/@id,substring-after($uri,$project/orion:content-location!substring(.,1,string-length(.)-1)))
 };
 
 declare private function uri-content-type($uri as xs:string) as xs:string {
@@ -83,7 +87,7 @@ declare private function ensure-type($uri as xs:string,$node as node()?) as node
 	else $node
 };
 
-declare function orion-api:pretty-print-post-request($path as xs:string,$project as element(project)) as xs:string? {
+declare function orion-api:pretty-print-post-request($path as xs:string,$project as element(orion:project)) as xs:string? {
 	let $content-type:=xdmp:get-request-header('Content-Type')
 	let $text:=xdmp:get-request-body('text')
 	let $_:=xdmp:set-response-content-type($content-type)
@@ -97,7 +101,7 @@ declare private function get-qname($name as xs:QName,$prefixes as map:map) as xs
 	else concat(map:get($prefixes,namespace-uri-from-QName($name)),':',local-name-from-QName($name))
 };
 
-declare function orion-api:assist-post-request($path as xs:string,$project as element(project)) as object-node() {
+declare function orion-api:assist-post-request($path as xs:string,$project as element(orion:project)) as object-node() {
 	let $uri:=ml-uri($path,$project)
 	let $doc:=doc($uri)
 	let $_:=xdmp:set-response-content-type('application/json')
@@ -174,7 +178,7 @@ declare function orion-api:assist-post-request($path as xs:string,$project as el
 	}
 };
 
-declare function orion-api:compile-get-request($path as xs:string,$project as element(project)) as object-node() {
+declare function orion-api:compile-get-request($path as xs:string,$project as element(orion:project)) as object-node() {
 	let $uri:=ml-uri($path,$project)
 	let $type:=uri-content-type($uri)
 	let $text:=xdmp:quote(doc($uri))
@@ -208,7 +212,7 @@ declare function orion-api:compile-get-request($path as xs:string,$project as el
 	default return ()
 };
 
-declare function orion-api:validate-get-request($path as xs:string,$project as element(project)) as object-node() {
+declare function orion-api:validate-get-request($path as xs:string,$project as element(orion:project)) as object-node() {
 	let $uri:=ml-uri($path,$project)
 	let $type:=uri-content-type($uri)
 	let $doc:=doc($uri)
@@ -272,7 +276,7 @@ declare function orion-api:validate-get-request($path as xs:string,$project as e
 	}
 };
 
-declare function orion-api:filesearch-get-request($path as xs:string,$workspace as object-node()?,$project as element(project)?) as object-node() {
+declare function orion-api:filesearch-get-request($path as xs:string,$workspace as object-node()?,$project as element(orion:project)?) as object-node() {
 	let $sort as xs:string:=xdmp:get-request-field('sort')
 	let $rows as xs:integer:=xs:integer(xdmp:get-request-field('rows'))
 	let $start as xs:integer:=xs:integer(xdmp:get-request-field('start'))
@@ -287,10 +291,11 @@ declare function orion-api:filesearch-get-request($path as xs:string,$workspace 
 	let $workspaces as object-node()+:=if (fn:empty($workspace)) then 
 			xdmp:directory('/orion/workspace/','1')/object-node()
 			else $workspace
-	let $projects as element(project)+:=if (fn:empty($project)) then
+	let $projects as element(orion:project)+:=if (fn:empty($project)) then
 			$workspaces!xdmp:directory(concat('/orion/workspace/',./Id/data(),'/project/'),'1')/*
 			else $project
-	let $uris0:=cts:uri-match($projects!ml-uri(orion-path($location),.))
+	let $result:=for $oproject in $projects 
+	let $uris0:=cts:uri-match(ml-uri(orion-path($location),$project))
 	let $uris:=if ($names) then for $uri in $uris0 
 		let $n:=fn:tokenize($uri,'/')[.!=''][last()]
 		let $m:=for $p in $names 
@@ -301,12 +306,11 @@ declare function orion-api:filesearch-get-request($path as xs:string,$workspace 
 	let $word-queries:=for $word in fn:tokenize($words,'[^\w]+')
 		let $pat:=if ($whole-word) then $word else concat($word,'*') 
 		return cts:word-query($pat,(if ($case-sensitive) then "case-sensitive" else "case-insensitive"))
-	let $result:=cts:search(doc(),cts:and-query(($word-queries,$location-query)))[($start+1) to ($start+$rows)]!base-uri(.)
+	return for $r in cts:search(doc(),cts:and-query(($word-queries,$location-query)))[($start+1) to ($start+$rows)]!base-uri(.)
+		return orion-api:file($oproject,$r,0,false())
 	return object-node {
 		"response": object-node {
-			"docs":array-node {
-				for $r in $result return orion-api:file($r,0,false())
-			},
+			"docs":array-node { $result },
 			"numFound":number-node{count($result)},
 			"start":$start
 		},
@@ -359,6 +363,7 @@ declare function orion-api:workspace-get-request($path as xs:string) as object-n
 		let $_:=xdmp:set-response-content-type("application/json")
 		let $ts:=xdmp:document-timestamp(concat('/orion/workspace',$path))
 		let $_:=xdmp:add-response-header('ETag',xdmp:integer-to-hex($ts))
+		let $ws:=tokenize($path,'/')[1]
 		let $projects:=xdmp:directory(concat('/orion/workspace',$path,'/project/'),'1')
 		return object-node {
 			"Id":substring($path,2),
@@ -367,20 +372,20 @@ declare function orion-api:workspace-get-request($path as xs:string) as object-n
 			"Location":concat("/orion/workspace",$path),
 			"Name":$w/Name,
 			"Projects": array-node {
-				for $project in $projects/project return object-node {
+				for $project in $projects/orion:project return object-node {
 					"Id" : $project/@id/data(),
-					"Workspace":$project/workspace/data(),
-					"Location": $project/location/data(),
-					"Name" : $project/name/data(),
-					"ContentLocation":$project/content-location/data() 
+					"Workspace":$ws,
+					"Location": base-uri($project),
+					"Name" : $project/orion:name/data(),
+					"ContentLocation":$project/orion:content-location/data() 
 				}
 			},
 			"Children": array-node {
-				for $project in $projects/project 
+				for $project in $projects/orion:project 
 					return object-node {
 						"Directory": true(),
 						"Id":$project/@id/data(),
-						"Name" : $project/name/data(),
+						"Name" : $project/orion:name/data(),
 						"Location":concat(orion-uri($path),'/',$project/@id,'/'),
 						"ChildrenLocation":concat(orion-uri($path),'/',$project/@id,'/?depth=1'),
 						"ExportLocation":export-location(concat(orion-uri($path),'/',$project/@id)),
@@ -401,15 +406,14 @@ declare function orion-api:amped-uri-exists($uri as xs:string,$dir as xs:boolean
 	return not(empty($uris!cts:uri-match(.)))
 };
 
-declare private function project-xml($id as xs:string,$name as xs:string,$ws as xs:string,$location as xs:string,$content-location as xs:string) as element(project) {
-	<project id="{$id}">
-		<name>{$name}</name>
-		<workspace>{$ws}</workspace>
-		<location>{$location}</location>
-		<content-location>{$content-location}</content-location>
-		<creator>{xdmp:get-current-user()}</creator>
-		<created>{fn:current-dateTime()}</created>
-	</project>
+declare private function project-xml($id as xs:string,$name as xs:string,$ws as xs:string,$content-location as xs:string) as element(orion:project) {
+	<orion:project id="{$id}">
+		<orion:name>{$name}</orion:name>
+		<orion:workspace>{$ws}</orion:workspace>
+		<orion:content-location>{$content-location}</orion:content-location>
+		<orion:creator>{xdmp:get-current-user()}</orion:creator>
+		<orion:created>{fn:current-dateTime()}</orion:created>
+	</orion:project>
 };
 
 declare function orion-api:workspace-post-request($path as xs:string) as object-node() {
@@ -440,28 +444,28 @@ declare function orion-api:workspace-post-request($path as xs:string) as object-
 			else $body/ContentLocation/data()
 		let $ws:=substring-after($path,'/')
 		let $d:=object-node{"Id" : $id,"Workspace":$ws,"Location": concat('/orion/workspace',$path,'/project/',$id), "Name" : $name, "Owner" : xdmp:get-current-user(),"ContentLocation":$location }
-		let $project:=project-xml($id,$name,$ws, concat('/orion/workspace',$path,'/project/',$id),$location)
+		let $project:=project-xml($id,$name,$ws,$location)
 		let $_:=xdmp:document-insert(
 	       concat('/orion/workspace',$path,'/project/',$id), $project, xdmp:default-permissions())
 		let $_:=try{xdmp:directory-create(ml-uri(orion-path($location),$project),xdmp:default-permissions())} catch ($ex) {xdmp:log($ex)}
 		return $d
 };
 
-declare function orion-api:workspace-delete-request($path as xs:string,$project as element(project)?) {
-	let $dir:=if ($project/id) then ml-uri(concat('/',$project/workspace/data(),'/',$project/id/data(),'/'),$project) else ()
+declare function orion-api:workspace-delete-request($path as xs:string,$project as element(orion:project)?) {
+	let $dir:=if ($project) then ml-uri('/orion/file/',$project) else ()
 	let $_:=if (orion-api:amped-uri-exists(concat('/orion/workspace',$path),false())) then xdmp:document-delete(concat('/orion/workspace',$path)) else ()
 	let $_:=if ($dir and orion-api:amped-uri-exists($dir,false())) then xdmp:document-delete($dir) else ()
 	return ''
 };
 
-declare private function orion-api:children($uri as xs:string,$depth as xs:int) as json:object* {
+declare private function orion-api:children($project as element(orion:project),$uri as xs:string,$depth as xs:int) as json:object* {
 	let $uris:=cts:uris((),("any"),cts:directory-query($uri,if ($depth=1) then '1' else 'infinity'))[count(tokenize(substring-after(.,$uri),'/')[.!='']) le $depth]
-	return $uris!orion-api:file(.,$depth - 1,false())
+	return $uris!orion-api:file($project,.,$depth - 1,false())
 };
 
-declare private function orion-api:file($uri as xs:string,$depth as xs:int,$include-parents as xs:boolean) as json:object {
+declare private function orion-api:file($project as element(orion:project),$uri as xs:string,$depth as xs:int,$include-parents as xs:boolean) as json:object {
 	let $ts as xs:integer?:=if (xdmp:document-properties($uri)//prop:last-modified) then (xdmp:document-properties($uri)//prop:last-modified!xs:dateTime(.) - xs:dateTime("1970-01-01T00:00:00-00:00")) div xs:dayTimeDuration("PT0.001S") else xdmp:document-timestamp($uri) idiv 10000
-	return orion-api:file($uri,$depth,$include-parents,$ts,document-length(doc($uri)),document-hash(doc($uri)))
+	return orion-api:file($project,$uri,$depth,$include-parents,$ts,document-length(doc($uri)),document-hash(doc($uri)))
 };
 
 declare private function import-location($uri as xs:string) as xs:string {
@@ -492,12 +496,12 @@ declare private function format-document($node as node()) as item() {
 	else $node
 };
 
-declare private function orion-api:file($uri as xs:string,$depth as xs:int,$include-parents as xs:boolean,$ts as xs:integer?,$size as xs:integer,$etag as xs:string?) as json:object {
-	let $path as xs:string:=ml-path($uri)
+declare private function orion-api:file($project as element(orion:project),$uri as xs:string,$depth as xs:int,$include-parents as xs:boolean,$ts as xs:integer?,$size as xs:integer,$etag as xs:string?) as json:object {
+	let $path as xs:string:=ml-path($uri,$project)
 	let $directory as xs:boolean:=ends-with($uri,'/') or count(xdmp:document-properties($uri)//prop:directory)!=0
 	let $parents as xs:string+:=tokenize($path,'/')[.!=''][1 to last()-1]
 	let $name as xs:string:=tokenize($path,'/')[.!=''][last()]
-	let $project:=if (($directory and count($parents)=1) or ($name='.project.xml' and count($parents)=2)) then 
+	let $oproject:=if (($directory and count($parents)=1) or ($name='.project.xml' and count($parents)=2)) then 
 		let $puri:=concat('/orion/workspace/',$parents[1],'/project/',if (count($parents)=1) then $name else $parents[2])
 		let $pdoc:=doc($puri)
 		return object-node {
@@ -511,9 +515,9 @@ declare private function orion-api:file($uri as xs:string,$depth as xs:int,$incl
 		"ETag":document-hash($pdoc),
 		"Length":document-length($pdoc),
 		"Name":".project.xml",
-		"Location":if ($directory) then concat(orion-uri(ml-path($uri)),'.project.xml') else orion-uri(ml-path($uri))
+		"Location":if ($directory) then concat(orion-uri(ml-path($uri,$project)),'.project.xml') else orion-uri(ml-path($uri,$project))
 	} else ()
-	return if (count($parents)=2 and $name='.project.xml') then $project
+	return if (count($parents)=2 and $name='.project.xml') then $oproject
 	else json:object() 
 		!map-with(.,'Attributes', object-node {
 		    "Executable": $directory,
@@ -527,7 +531,7 @@ declare private function orion-api:file($uri as xs:string,$depth as xs:int,$incl
 		!map-with(.,"Name", $name)
 		!(if ($etag) then map-with(.,"ETag",$etag) else .)
 		!(if ($directory) then map-with(.,"ImportLocation", import-location($uri))!map-with(.,"ExportLocation", export-location($uri)) else .)
-		!(if ($directory and $depth gt 0) then map-with(.,'Children',array-node{orion-api:children($uri,$depth),$project})  else .)
+		!(if ($directory and $depth gt 0) then map-with(.,'Children',array-node{orion-api:children($project,$uri,$depth),$oproject})  else .)
 		!(if ($include-parents) then map-with(.,"Parents", array-node {
 		  	for $parent at $pos in $parents where $pos gt 1 order by $pos descending return object-node {
 		    	"ChildrenLocation": concat(orion-uri(concat('/',string-join($parents[1 to $pos],'/'))),"/?depth=1"),
@@ -538,7 +542,7 @@ declare private function orion-api:file($uri as xs:string,$depth as xs:int,$incl
 		!map-with(.,if ($directory) then "ChildrenLocation" else "FileEncoding",if ($directory) then concat(orion-uri($path),"?depth=1") else array-node {"UTF-8"})
 };
 
-declare function orion-api:file-get-request($path as xs:string,$project as element(project)) {
+declare function orion-api:file-get-request($path as xs:string,$project as element(orion:project)) {
 	let $uri:=ml-uri($path,$project)
 	let $depth as xs:int:=if (fn:empty(xdmp:get-request-field('depth'))) then 0 else xs:int(xdmp:get-request-field('depth'))
 	let $directory as xs:boolean:=ends-with($uri,'/') or count(xdmp:document-properties($uri)//prop:directory)!=0
@@ -547,7 +551,7 @@ declare function orion-api:file-get-request($path as xs:string,$project as eleme
 	return if (orion-api:amped-uri-exists($uri,true())) then
 		let $result:=for $part in $parts
 		return switch($part)
-		case 'meta' return orion-api:file($uri,$depth,true())
+		case 'meta' return orion-api:file($project,$uri,$depth,true())
 		case 'body' return 
 			let $d:=doc($uri)
 			let $hash:=document-hash($d)
@@ -572,7 +576,7 @@ declare private function orion-api:patch($d as xs:string,$start as xs:integer,$e
 	concat(substring($d,1,$start),$s,substring($d,$end+1,string-length($d)))
 };
 
-declare function orion-api:file-post-request($path as xs:string,$project as element(project)) {
+declare function orion-api:file-post-request($path as xs:string,$project as element(orion:project)) {
 	let $slug as xs:string?:=xdmp:get-request-header('Slug')
 	let $create-options:=xdmp:get-request-header('X-Create-Options')!fn:tokenize(.,'[ ,]+')
 	let $method-override:=xdmp:get-request-header('X-HTTP-Method-Override')!fn:tokenize(.,'[ ,]+')
@@ -582,7 +586,7 @@ declare function orion-api:file-post-request($path as xs:string,$project as elem
 	let $directory:=if ($body/Directory/data()) then xs:boolean($body/Directory/data()) else if ($body/Location/data()) then ends-with($body/Location/data(),'/') else false()
 	let $_:=xdmp:add-response-header('ETag',xdmp:integer-to-hex($ts))
 	let $parents:=tokenize($path,'/')[.!='']
-	let $uri:=ml-uri(concat($path,if (ends-with($path,'/') or fn:empty($name)) then () else '/',$name,if ($directory) then '/' else ()),$project)
+	let $uri:=ml-uri(orion-path(concat($path,if (ends-with($path,'/') or fn:empty($name)) then () else '/',$name,if ($directory) then '/' else ())),$project)
 	let $exists as xs:boolean:=amped-uri-exists($uri,false())
 	return if ($create-options='no-overwrite' and $exists) then 
 		xdmp:set-response-code(412,'file exists')
@@ -596,7 +600,7 @@ declare function orion-api:file-post-request($path as xs:string,$project as elem
 			let $_:=xdmp:node-replace($doc,$ndoc)
 			let $nhash:=document-hash($ndoc)
 			let $_:=xdmp:add-response-header('ETag',$nhash)
-			return orion-api:file($uri,0,false(),$ts,document-length($ndoc),$nhash)
+			return orion-api:file($project,$uri,0,false(),$ts,document-length($ndoc),$nhash)
 		else
 			xdmp:set-response-code(414,"document "||$uri||" changed "||$ifmatch||"!="||$hash)
 	else
@@ -614,7 +618,7 @@ declare function orion-api:file-post-request($path as xs:string,$project as elem
 			return if ($create-options='move' and not(starts-with($uri2,'/orion/workspace/'))) then xdmp:document-delete($uri2) else ()
 		let $_:=xdmp:set-response-code(if ($exists) then 200 else 201,'created')
 		let $_:=xdmp:add-response-header("Location",$uri)
-		return orion-api:file($uri,0,false(),$ts,0,())		
+		return orion-api:file($project,$uri,0,false(),$ts,0,())		
 	else
 		let $uri1:=ml-uri(substring-after($body/Location/data(),'/file'),$project)
 		let $source as node():=if ($create-options=('move','copy') and is-file($uri1)) 
@@ -627,7 +631,7 @@ declare function orion-api:file-post-request($path as xs:string,$project as elem
 			else ()
 		let $_:=xdmp:set-response-code(if ($exists) then 200 else 201,'created')
 		let $_:=xdmp:add-response-header("Location",$uri)
-		return orion-api:file($uri,0,false(),$ts,document-length($source),document-hash($source))
+		return orion-api:file($project,$uri,0,false(),$ts,document-length($source),document-hash($source))
 };
 
 declare private function is-binary($uri as xs:string) {
@@ -642,8 +646,8 @@ declare private function document-hash($node as node()?) as xs:string {
 	xdmp:integer-to-hex(xdmp:hash64(if ($node/binary()) then xs:string(xs:base64Binary($node/binary())) else xdmp:quote($node)))
 };
 
-declare function orion-api:file-put-request($path as xs:string,$project as element(project)) {
-	let $uri:=ml-uri($path,$project)
+declare function orion-api:file-put-request($path as xs:string,$project as element(orion:project)) {
+	let $uri as xs:string:=ml-uri($path,$project)
 	let $directory as xs:boolean:=ends-with($uri,'/') or count(xdmp:document-properties($uri)//prop:directory)!=0
 	let $parts as xs:string+:=if (fn:empty(xdmp:get-request-field('parts'))) then if ($directory) then 'meta' else 'body' else fn:tokenize(xdmp:get-request-field('parts'),'[, ]+')
 	let $exists as xs:boolean:=amped-uri-exists($uri,false())
@@ -666,14 +670,14 @@ declare function orion-api:file-put-request($path as xs:string,$project as eleme
 				else xdmp:document-insert($uri,$realdoc)
 				let $nhash:=document-hash($realdoc)
 				let $_:=xdmp:add-response-header('ETag',$nhash)
-				return orion-api:file($uri,1,false(),$ts,document-length($realdoc),document-hash($realdoc))
+				return orion-api:file($project,$uri,1,false(),$ts,document-length($realdoc),document-hash($realdoc))
 			else
 				xdmp:set-response-code(414,"document "||$uri||" changed "||$ifmatch||"!="||$hash)
 		case 'meta' return if ($exists) then () else xdmp:set-response-code(404,$uri||' not found')
 		default return fn:error(xs:QName('orion-api:file-put-request'),'invalid part '||$part)
 };
 
-declare function orion-api:file-delete-request($path as xs:string,$project as element(project)) {
+declare function orion-api:file-delete-request($path as xs:string,$project as element(orion:project)) {
 	let $uri:=ml-uri($path,$project)
 	return if (starts-with($uri,'/orion/workspace')) then
 		xdmp:set-response-code(403,"cannot delete project file")
