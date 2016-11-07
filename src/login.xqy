@@ -1,14 +1,30 @@
-
-let $user:=if (fn:empty(xdmp:get-request-field('user'))) then xdmp:get-session-field('user') else xdmp:get-request-field('user')
-let $password:=if (fn:empty(xdmp:get-request-field('password'))) then xdmp:get-session-field('password') else xdmp:get-request-field('password')
-let $remember as xs:boolean:=if (fn:empty(xdmp:get-request-field('user'))) then if (fn:empty(xdmp:get-session-field('remember'))) then false() else xdmp:get-session-field('remember') else xdmp:get-request-field('remember')='on'
-let $action:=xdmp:get-request-field('action')
-let $_:=xdmp:set-response-content-type("text/html")
-
-return try 
-{if (fn:empty($user) or fn:empty($password) or $action='logout' or not(xdmp:login($user,$password,true()))) then
-	let $_:=xdmp:set-response-code(401,'Please log in')
-	return <html>
+let $user :=
+  if (fn:empty(xdmp:get-request-field("user")))
+  then xdmp:get-session-field("user")
+  else xdmp:get-request-field("user")
+let $password :=
+  if (fn:empty(xdmp:get-request-field("password")))
+  then xdmp:get-session-field("password")
+  else xdmp:get-request-field("password")
+let $remember as xs:boolean :=
+  if (fn:empty(xdmp:get-request-field("user")))
+  then
+    if (fn:empty(xdmp:get-session-field("remember")))
+    then false()
+    else xdmp:get-session-field("remember")
+  else
+    xdmp:get-request-field("remember") = "on"
+let $action := xdmp:get-request-field("action")
+let $_ := xdmp:set-response-content-type("text/html")
+return
+  try {
+    if (fn:empty($user) or fn:empty($password) or
+        $action = "logout" or
+        not(xdmp:login($user, $password, true())))
+    then
+      let $_ := xdmp:set-response-code(401, "Please log in")
+      return
+        <html>
 		<head><title>Login</title>
 		<style><![CDATA[
 form {
@@ -75,7 +91,7 @@ span.psw {
     .cancelbtn {
         width: 100%;
     }
-}		]]></style>
+}]]></style>
 		</head>
 		<body>
 			<form method="POST" action="login">
@@ -101,15 +117,24 @@ span.psw {
 			</form>
 		</body>
 	</html>
-else 
-	let $_:=if ($user=xdmp:get-request-field('user')) then (xdmp:set-session-field('remember',$remember),xdmp:set-session-field('user',$user),xdmp:set-session-field('password',$password)) else ()
-	return 	<html>
+    else
+      let $_ :=
+        if ($user = xdmp:get-request-field("user"))
+        then
+          (xdmp:set-session-field("remember", $remember),
+           xdmp:set-session-field("user", $user),
+           xdmp:set-session-field("password", $password))
+        else
+          ()
+      return
+        <html>
 		<head><title>Login</title></head>
 		<body>
 		You are logged in as {xdmp:get-current-user()}<br/>
-		<a href='?action=logout'>Log in as a different user</a>
+		<a href="?action=logout">Log in as a different user</a>
 		</body>
 	</html>
-} catch ($ex) {
-	$ex
-}
+  } catch ($ex) {
+    $ex
+  }
+  

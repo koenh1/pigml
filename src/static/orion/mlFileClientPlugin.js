@@ -97,6 +97,53 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","ext/orion/xmlp
    id : "ml.compile",
  });
 
+provider.registerServiceProvider("orion.core.contenttype", {}, {
+    contentTypes: [
+        {
+            id: "application/x-project",
+            name: "Project file",
+            filename: [".project.xml"],
+            "extends": "application/xml",
+            imageClass: "core-sprite-wrench"
+        }
+    ]});
+
+provider.registerServiceProvider("orion.core.contenttype", {}, {
+    contentTypes: [
+        {
+            id: "application/vnd.marklogic-xdmp",
+            name: "XQuery file",
+            extension: ['xq','xqy','xquery'],
+            "extends": "application/xquery",
+            imageClass: "core-sprite-gear"
+        }
+    ]});
+
+provider.registerServiceProvider("orion.core.contenttype", {}, {
+    contentTypes: [
+        {
+            id: "application/xslt+xml",
+            name: "xslt file",
+            "extends": "application/xml",
+            extension: ['xsl','xslt'],
+            imageClass: "file-sprite-css"
+        }
+    ]});
+
+
+  provider.registerServiceProvider("orion.edit.command", {
+   run : function(selectedText, text, selection,fileName) {
+     service.update(fileName).then(function(result){console.log(result);})
+     return null;
+   }
+ }, {
+   contentType: ['application/x-project'],
+   name : "Update",
+   img: "core-sprite-wrench",
+   id : "ml.update",
+   tooltip: "update project"
+ });
+
 provider.registerServiceProvider("orion.edit.contentAssist",
    {
 
