@@ -75,10 +75,10 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","ext/orion/xmlp
 
   provider.registerServiceProvider("orion.edit.command", {
    run : function(selectedText, text, selection) {
-     return service.prettyPrint(text,'application/xquery')
+     return service.prettyPrint(text,'application/vnd.marklogic-xdmp')
    }
  }, {
-   contentType: ["application/xquery"],
+   contentType: ["application/vnd.marklogic-xdmp"],
    name : "PrettyPrint",
    key:["p",true],
    id : "ml.prettyprint",
@@ -91,7 +91,7 @@ define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","ext/orion/xmlp
      //return service.compile(text,'application/xquery').then(function(result){console.log(result);window.alert(result)})
    }
  }, {
-   contentType: ["application/xquery"],
+   contentType: ["application/vnd.marklogic-xdmp"],
    key: ['r',true],
    name : "Compile",
    id : "ml.compile",

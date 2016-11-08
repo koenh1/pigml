@@ -44,7 +44,8 @@ require(["ext/orion/mlFileImpl"], function(FileServiceImpl) {
     	document.getElementById('compileresult').innerHTML=message;
     	start=r.start;
     	end=r.end;
-	})	
+	},function(error){console.log(error);
+		document.getElementById('compileresult').innerHTML='An error occurred <br/><div style="background:red">'+JSON.stringify(error.responseText)+'</div>'})	
 })
 		function done() {
 			window.parent.postMessage(JSON.stringify(

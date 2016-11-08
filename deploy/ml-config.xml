@@ -517,6 +517,9 @@
           <privilege-name>xdmp:invoke</privilege-name>
         </privilege>
         <privilege>
+          <privilege-name>xdmp:invoke-in</privilege-name>
+        </privilege>
+        <privilege>
           <privilege-name>xdmp:with-namespaces</privilege-name>
         </privilege>
         <privilege>

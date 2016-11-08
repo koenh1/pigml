@@ -21,6 +21,5 @@ return
           "X-ML-User", xdmp:get-current-user())
       return orion-api:main()
   } catch ($ex) {
-    xdmp:set-response-code(200, "Server error"), $ex
+    xdmp:set-response-code(500, "Server error"), $ex
   }
- 
