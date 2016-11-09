@@ -560,6 +560,37 @@ as object-node()
   let $_ := xdmp:add-response-header("ETag", $hash)
   return
     switch ($type)
+    case "application/xslt+xml" return
+      object-node {
+        "uri": $uri,
+        "problems": array-node {
+          try {
+            let $_ := xdmp:xslt-eval($doc,<dummy/>,(),<options xmlns="xdmp:eval"><static-check>true</static-check></options>)
+            return ()
+          } catch ($ex) {
+            $ex !
+            object-node {
+              "description": concat(
+                ./error:message/data(),
+                " ,",
+                ./error:data/error:datum[1]/data()),
+              "line": ./error:stack/error:frame[1]/error:line/xs:int(.),
+              "severity": "warning",
+              "start": ./
+              error:stack/
+              error:frame[1]/
+              error:column/
+              xs:int(.),
+              "end": ./
+              error:stack/
+              error:frame[1]/
+              error:column/
+              xs:int(.) +
+              1
+            }
+          }
+        }
+      }    
     case "text/html" return
       object-node {
         "uri": $uri,
