@@ -261,6 +261,12 @@ as xs:string
       local-name-from-QName($name))
 };
 
+declare private function type-get-values($type as schema-type()) as xs:string* {
+	let $enums:=sc:facets($type)[sc:name(.) = xs:QName("xs:enumeration")]
+	return if (fn:empty($enums)) then sc:annotations($type)/xs:appinfo[@source='suggest']!xdmp:eval(.)
+	else $enums!sc:component-property("value", .)
+};
+
 declare function orion-api:assist-post-request(
   $path as xs:string,
   $project as element(orion:project))
@@ -278,42 +284,39 @@ as object-node()
       substring-before(., ":"))
   let $annotations as xs:boolean := $data/annotations/data()
   let $ns as map:map := $data/info/ns
+  let $node as node() := xdmp:value(
+	    concat(
+	      "$doc",
+	      if (ends-with($xpath, "/@"))
+	      then
+	        substring(
+	          $xpath, 1, string-length($xpath) - 2)
+	      else if (ends-with($xpath, "/text()[1]"))
+	      then
+	        substring(
+	          $xpath, 1, string-length($xpath) - 10)
+	      else
+	        $xpath),
+	    $ns)
   let $values :=
     if ($doc/*)
     then
       try {
-        let $node as node() :=
-          xdmp:value(
-            concat(
-              "$doc",
-              if (ends-with($xpath, "/@"))
-              then
-                substring(
-                  $xpath, 1, string-length($xpath) - 2)
-              else if (ends-with($xpath, "/text()[1]"))
-              then
-                substring(
-                  $xpath, 1, string-length($xpath) - 10)
-              else
-                $xpath),
-            $ns)
-        return
           typeswitch ($node)
            case attribute() return
              let $type := sc:type($node)
              return
                if ($annotations)
                then
-                 let $values :=
-                   (sc:facets($type)[sc:name(.) = xs:QName("xs:enumeration")]) !
-                   sc:component-property("value", .)
+                 let $values :=type-get-values($type)
                  let $annot := sc:facets($type) ! sc:annotations(.)
                  return
                    for $value at $pos in $values
                    where starts-with($value, $prefix)
                    return
                      object-node {
-                       "proposal": $value,
+                       "proposal": substring-after($value,$prefix),
+                       "description":$value,
                        "hover": ($annot/
                         xs:documentation[
                           contains(
@@ -322,10 +325,7 @@ as object-node()
                         text(),
                         null-node {})[1]
                      }
-               else
-                 ((sc:facets($type)[sc:name(.) = xs:QName("xs:enumeration")]) !
-                  sc:component-property("value", .)[starts-with(., $prefix)]) !
-                 substring-after(., $prefix)
+               else type-get-values($type)[starts-with(., $prefix)]!substring-after(., $prefix)
            case element() return
              let $type := sc:type($node)
              let $simpletype := sc:simple-type($node)
@@ -334,7 +334,7 @@ as object-node()
                  map:keys($ns) !
                  map:entry(string(map:get($ns, .)), .))
              return
-               if (ends-with($xpath, "/@"))
+               if (ends-with($xpath, "/@")) (: list attributes :)
                then
                  let $atts :=
                    for $att in sc:attributes($type)
@@ -363,9 +363,7 @@ as object-node()
                then
                  if ($annotations)
                  then
-                   let $values :=
-                     (sc:facets($type)[sc:name(.) = xs:QName("xs:enumeration")]) !
-                     sc:component-property("value", .)
+                   let $values := type-get-values($type)
                    let $annot := sc:facets($type) ! sc:annotations(.)
                    return
                      for $value at $pos in $values
@@ -373,6 +371,7 @@ as object-node()
                      return
                        object-node {
                          "proposal": substring-after($value, $prefix),
+                         "description":$value,
                          "hover": ($annot/
                           xs:documentation[
                             contains(
@@ -383,9 +382,10 @@ as object-node()
                           null-node {})[1]
                        }
                  else
-                   ((sc:facets($type)[sc:name(.) = xs:QName("xs:enumeration")]) !
-                    sc:component-property("value", .)[starts-with(., $prefix)]) !
-                   substring-after(., $prefix)
+                   type-get-values($type)[starts-with(., $prefix)] ! (if ($prefix='') then . else object-node{
+                   		"proposal":substring-after(., $prefix),
+                   		"description": .
+                   	})
                else
                  let $tns as xs:string :=
                    <x>{ sc:schema($node) }</x>/
@@ -419,6 +419,7 @@ as object-node()
                      return
                        object-node {
                          "proposal": substring-after($n, $prefix),
+                         "description":$n,
                          "hover": ($annot/text(), null-node {})[1]
                        }
                    else
@@ -434,14 +435,13 @@ as object-node()
                      substring-after(., $prefix)
            default return ()
       } catch ($ex) {
-        xdmp:describe($ex, (), ())
+      	let $_:=xdmp:log(xdmp:describe($ex, (), ()))
+      	return ()
       }
     else
       ()
   return
     object-node {
-      "xpath": $xpath,
-      "prefix": $prefix,
       "values": array-node {
         $values
       }
