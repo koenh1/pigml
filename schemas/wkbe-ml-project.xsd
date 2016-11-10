@@ -10,6 +10,7 @@
 				<xs:element name="content-location" type="ext:directory-name"/>
 				<xs:element name="default-collection" minOccurs="0" maxOccurs="unbounded" type="ext:collection-name"/>
 				<xs:element name="default-permission" minOccurs="0" maxOccurs="unbounded" type="ext:permission"/>
+				<xs:element ref="orion:output-options" minOccurs="0"/>
 				<xs:element name="creator" type="ext:user-name"/>
 				<xs:element name="created" type="xs:dateTime"/>
 			</xs:sequence>
@@ -25,4 +26,75 @@
 			<xs:field xpath="@role"/>
 		</xs:unique>
 	</xs:element>
+ <xs:element name="output-options">
+  <xs:complexType name="OptionsType">
+  <xs:attribute name="output-encoding" type="xs:string"/>
+  <xs:attribute name="output-sgml-character-entities">
+    <xs:simpleType>
+      <xs:restriction base="xs:token">
+        <xs:enumeration value="normal"/>
+        <xs:enumeration value="none"/>
+        <xs:enumeration value="math"/>
+        <xs:enumeration value="pub"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="method">
+    <xs:simpleType>
+      <xs:restriction base="xs:token">
+        <xs:enumeration value="xml"/>
+        <xs:enumeration value="html"/>
+        <xs:enumeration value="xhtml"/>
+        <xs:enumeration value="text"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="cdata-section-elements">
+    <xs:simpleType>
+      <xs:list itemType="xs:QName"/>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="encoding" type="xs:string"/>
+  <xs:attribute name="use-character-maps">
+    <xs:simpleType>
+      <xs:list>
+			  <xs:simpleType>
+			    <xs:restriction base="xs:string">
+			      <xs:enumeration value="xdmp:sgml-entities-normal"/>
+			      <xs:enumeration value="xdmp:sgml-entities-math"/>
+			      <xs:enumeration value="xdmp:sgml-entities-pub"/>
+			    </xs:restriction>
+			  </xs:simpleType>
+      </xs:list>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="media-type" type="xs:string"/>
+  <xs:attribute name="byte-order-mark" type="orion:YesNo"/>
+  <xs:attribute name="indent" type="orion:YesNo"/>
+  <xs:attribute name="indent-untyped" type="orion:YesNo"/>
+  <xs:attribute name="indent-tabs" type="orion:YesNo"/>
+  <xs:attribute name="include-content-type" type="orion:YesNo"/>
+  <xs:attribute name="escape-uri-attributes" type="orion:YesNo"/>
+  <xs:attribute name="doctype-public" type="xs:string"/>
+  <xs:attribute name="doctype-system" type="xs:string"/>
+  <xs:attribute name="omit-xml-declaration" type="orion:YesNo"/>
+  <xs:attribute name="standalone" type="orion:YesNo"/>
+  <xs:attribute name="normalization-form">
+    <xs:simpleType>
+      <xs:restriction base="xs:token">
+        <xs:enumeration value="NFC"/>
+        <xs:enumeration value="NFD"/>
+        <xs:enumeration value="NFKD"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="default-attributes" type="orion:YesNo"/>
+  </xs:complexType>
+</xs:element>
+  <xs:simpleType name="YesNo">
+    <xs:restriction base="xs:token">
+      <xs:enumeration value="yes"/>
+      <xs:enumeration value="no"/>
+    </xs:restriction>
+  </xs:simpleType>
 </xs:schema>

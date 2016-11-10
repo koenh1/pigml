@@ -261,10 +261,15 @@ as xs:string
       local-name-from-QName($name))
 };
 
-declare private function type-get-values($type as schema-type()) as xs:string* {
+declare private function type-get-values-enum($type as schema-type()) as xs:string* {
 	let $enums:=sc:facets($type)[sc:name(.) = xs:QName("xs:enumeration")]
 	return if (fn:empty($enums)) then sc:annotations($type)/xs:appinfo[@source='suggest']!xdmp:eval(.)
 	else $enums!sc:component-property("value", .)
+};
+
+declare private function type-get-values($type as schema-type()) as xs:string* {
+	let $tp:=sc:component-property('item-type',$type)
+	return type-get-values-enum(($tp,$type)[1])
 };
 
 declare function orion-api:assist-post-request(
@@ -284,7 +289,7 @@ as object-node()
       substring-before(., ":"))
   let $annotations as xs:boolean := $data/annotations/data()
   let $ns as map:map := $data/info/ns
-  let $node as node() := xdmp:value(
+  let $node0 as node()? := xdmp:value(
 	    concat(
 	      "$doc",
 	      if (ends-with($xpath, "/@"))
@@ -298,6 +303,7 @@ as object-node()
 	      else
 	        $xpath),
 	    $ns)
+  let $node as node()?:=if ((fn:empty($node0)) and contains($xpath,'/@')) then xdmp:value(concat("$doc",substring-before($xpath,'/@')),$ns) else $node0
   let $values :=
     if ($doc/*)
     then
@@ -334,7 +340,7 @@ as object-node()
                  map:keys($ns) !
                  map:entry(string(map:get($ns, .)), .))
              return
-               if (ends-with($xpath, "/@")) (: list attributes :)
+               if (contains($xpath, "/@")) (: list attributes :)
                then
                  let $atts :=
                    for $att in sc:attributes($type)
@@ -345,11 +351,13 @@ as object-node()
                  return
                    if ($annotations)
                    then
-                     for $att in $atts
+                     for $att in $atts 
+                     	let $name:=get-qname(sc:name($att), $revns)
+                     	where starts-with($name,$prefix)
                      return
                        object-node {
-                         "proposal": get-qname(sc:name($att), $revns) !
-                         concat(" ", ., "=&quot;&quot;"),
+                         "proposal": concat(if ($prefix) then substring-after($name,$prefix) else concat(" ", $name), "=&quot;&quot;"),
+                         "description": $name,
                          "hover": (sc:annotations($att)/
                           xs:documentation[1]/
                           text(),
@@ -664,7 +672,7 @@ as object-node()
                       error:data/
                       error:datum[last() - 1]/
                       data()
-                    let $offsets := $xpath ! node-offset-xpath($d, .)
+                    let $offsets := $xpath ! node-offset-xpath($d, .,$project)
                     return
                       object-node {
                         "ex": if (fn:empty($offsets))
@@ -1201,14 +1209,16 @@ as xs:string*
 };
 
 declare private  
-function format-document($node as node())
+function format-document($node as node(),$project as element(orion:project))
 as item()
 {
   if ($node/element())
   then
-    xdmp:quote(
-      $node,
-      <options xmlns="xdmp:quote"><indent-tabs>yes</indent-tabs><default-attributes>yes</default-attributes><omit-xml-declaration>yes</omit-xml-declaration><indent>yes</indent><indent-untyped>yes</indent-untyped></options>)
+  let $options:=if ($project/orion:output-options) then <options xmlns="xdmp:quote">
+  	{for $a in $project/orion:output-options/@* return element{fn:QName('xdmp:quote',name($a))}{$a/data()}}
+  	</options> else 
+  	<options xmlns="xdmp:quote"><indent-tabs>yes</indent-tabs><default-attributes>yes</default-attributes><omit-xml-declaration>yes</omit-xml-declaration><indent>yes</indent><indent-untyped>yes</indent-untyped></options>
+    return xdmp:quote($node,$options)
   else if ($node/object-node())
   then ser((), $node/object-node(), "")
   else $node
@@ -1398,7 +1408,7 @@ declare function orion-api:file-get-request(
               else uri-content-type($path))
           return
             if ($result instance of node())
-            then format-document($result)
+            then format-document($result,$project)
             else text { xdmp:quote($result) }
         else
           xdmp:multipart-encode(
@@ -1415,7 +1425,7 @@ declare function orion-api:file-get-request(
             for $r in $result
             return
               if ($r instance of node())
-              then format-document($r)
+              then format-document($r,$project)
               else text { xdmp:quote($r) })
     else if (fn:tokenize($path, "/")[last()] =
         (".tern-project",
@@ -1864,11 +1874,11 @@ as node()*
      default return ($m, $node)
 };
 
-declare function node-offset($node as node(), $find as node())
+declare function node-offset($node as node(), $find as node(),$project as element(orion:project))
 as xs:int*
 {
   let $x := mark($node, $find)
-  let $s := format-document($x)
+  let $s := format-document($x,$project)
   let $start := substring-before($s, "&#x058d;")
   let $isatr as xs:boolean := ends-with($start, "=&quot;")
   let $line :=
@@ -1897,7 +1907,7 @@ as xs:int*
   return ($line, $start2, $end2)
 };
 
-declare function node-offset-xpath($node as node(), $xpath as xs:string)
+declare function node-offset-xpath($node as node(), $xpath as xs:string,$project as element(orion:project))
 as xs:int*
 {
   node-offset(
@@ -1907,5 +1917,5 @@ as xs:int*
         "$node",
         if (contains($xpath, ")"))
         then substring-after($xpath, ")")
-        else $xpath)))
+        else $xpath)),$project)
 };
