@@ -6,11 +6,25 @@
 			<xs:sequence>
 				<xs:element name="name" type="xs:Name"/>
 				<xs:element name="workspace" type="xs:Name"/>
-				<xs:element name="database" type="ext:database-name"/>
+				<xs:element name="database" type="ext:database-name" minOccurs="0"/>
 				<xs:element name="content-location" type="ext:directory-name"/>
-				<xs:element name="default-collection" minOccurs="0" maxOccurs="unbounded" type="ext:collection-name"/>
-				<xs:element name="default-permission" minOccurs="0" maxOccurs="unbounded" type="ext:permission"/>
-				<xs:element ref="orion:output-options" minOccurs="0"/>
+				<xs:element name="permissions">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="permission" minOccurs="0" maxOccurs="unbounded" type="ext:permission"/>
+						</xs:sequence>
+						<xs:attribute name="user-defaults" type="orion:YesNo" default="Yes"/>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="collections">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="collection"  minOccurs="0" maxOccurs="unbounded" type="ext:collection-name"/>
+						</xs:sequence>
+						<xs:attribute name="user-defaults" type="orion:YesNo" default="Yes"/>
+					</xs:complexType>
+				</xs:element>
+			 <xs:element name="output-options" type="orion:OptionsType" minOccurs="0"/>
 				<xs:element name="creator" type="ext:user-name"/>
 				<xs:element name="created" type="xs:dateTime"/>
 			</xs:sequence>
@@ -26,9 +40,15 @@
 			<xs:field xpath="@role"/>
 		</xs:unique>
 	</xs:element>
- <xs:element name="output-options">
+ <xs:simpleType name="YesNo">
+    <xs:restriction base="xs:token">
+      <xs:enumeration value="yes"/>
+      <xs:enumeration value="no"/>
+    </xs:restriction>
+  </xs:simpleType>
+
   <xs:complexType name="OptionsType">
-  <xs:attribute name="output-encoding" type="xs:string"/>
+
   <xs:attribute name="output-sgml-character-entities">
     <xs:simpleType>
       <xs:restriction base="xs:token">
@@ -90,11 +110,4 @@
   </xs:attribute>
   <xs:attribute name="default-attributes" type="orion:YesNo"/>
   </xs:complexType>
-</xs:element>
-  <xs:simpleType name="YesNo">
-    <xs:restriction base="xs:token">
-      <xs:enumeration value="yes"/>
-      <xs:enumeration value="no"/>
-    </xs:restriction>
-  </xs:simpleType>
 </xs:schema>

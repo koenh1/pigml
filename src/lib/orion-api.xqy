@@ -5,6 +5,7 @@ declare namespace error="http://marklogic.com/xdmp/error";
 declare namespace s="http://www.w3.org/2005/xpath-functions";
 declare namespace tidy="xdmp:tidy";
 declare namespace orion="http://marklogic.com/ns/orion";
+declare namespace xs="http://www.w3.org/2001/XMLSchema";
 declare option xdmp:mapping "false";
 
 declare function orion-api:main()
@@ -16,14 +17,14 @@ declare function orion-api:main()
   let $workspace as object-node()? :=
     if (count($parts) ge 2)
     then
-      document(concat("/orion/workspace/", $parts[2]))/
+      doc(concat("/orion/workspace/", $parts[2]))/
       object-node()
     else
       ()
   let $project as element(orion:project)? :=
     if (count($parts) ge 3)
     then
-      document(
+      doc(
         concat(
           "/orion/workspace/",
           $parts[2],
@@ -272,10 +273,44 @@ declare private function type-get-values($type as schema-type()) as xs:string* {
 	return type-get-values-enum(($tp,$type)[1])
 };
 
+
+declare private function join-regex($s as xs:string*) as xs:string {
+  if (fn:count($s)=1) then if (starts-with($s,',') or starts-with($s,'(')) then $s else concat(',',$s) 
+  else concat(head($s),'(',join-regex(tail($s)),')?')
+};
+declare private function reqex-freq($s as xs:string*,$min as attribute()?,$max as attribute()?) as xs:string {
+  if (fn:empty($max) and fn:empty($min)) then join-regex($s)
+  else if (string($max)='1' or fn:empty($max)) then if ($min=0) then concat('(',join-regex($s),')?') else $s
+  else concat('(',join-regex($s),'){',if ($min castable as xs:int) then $min else '1',',',if ($max castable as xs:int) then $max else (),'}')
+};
+
+declare private function regex($schema as element(xs:schema),$node as element(),$min as attribute()?,$max as attribute()?) as xs:string? {
+  typeswitch($node)
+  case element(xs:sequence) return reqex-freq($node/node()!regex($schema,.,(),()),($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
+  case element(xs:choice) return reqex-freq(concat('(',string-join($node/node()!regex($schema,.,$min,$max),'|'),')'),($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
+  case element(xs:element) return 
+    if ($node/@name) then reqex-freq($node/@name,($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
+    else $schema/xs:element[fn:QName($schema/@targetNamespace,@name)=$node/@ref]!regex($schema,.,($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
+  case element(xs:attribute) return ()
+  default return $node/node()!regex($schema,.,$min,$max)
+};
+
+declare private function find-elements($schema as element(xs:schema),$node as element()) as xs:string* {
+  typeswitch($node)
+  case element(xs:sequence) return $node/node()!find-elements($schema,.)
+  case element(xs:choice) return $node/node()!find-elements($schema,.)
+  case element(xs:element) return 
+    if ($node/@name) then $node/@name/string(.)
+    else $schema/xs:element[fn:QName($schema/@targetNamespace,@name)=$node/@ref]!find-elements($schema,.)
+  case element(xs:attribute) return ()
+  default return $node/node()!find-elements($schema,.)
+};
+
+
 declare function orion-api:assist-post-request(
   $path as xs:string,
   $project as element(orion:project))
-as object-node()
+as object-node()?
 {
   let $uri := ml-uri($path, $project)
   let $doc := doc($uri)
@@ -304,14 +339,15 @@ as object-node()
 	        $xpath),
 	    $ns)
   let $node as node()?:=if ((fn:empty($node0)) and contains($xpath,'/@')) then xdmp:value(concat("$doc",substring-before($xpath,'/@')),$ns) else $node0
+  return if (fn:empty($node)) then ()
+  else
+  let $type := sc:type($node)
+  return if (fn:empty($type)) then ()
+  else
   let $values :=
-    if ($doc/*)
-    then
       try {
           typeswitch ($node)
            case attribute() return
-             let $type := sc:type($node)
-             return
                if ($annotations)
                then
                  let $values :=type-get-values($type)
@@ -333,7 +369,6 @@ as object-node()
                      }
                else type-get-values($type)[starts-with(., $prefix)]!substring-after(., $prefix)
            case element() return
-             let $type := sc:type($node)
              let $simpletype := sc:simple-type($node)
              let $revns :=
                map:new(
@@ -395,20 +430,28 @@ as object-node()
                    		"description": .
                    	})
                else
-                 let $tns as xs:string :=
-                   <x>{ sc:schema($node) }</x>/
-                   xs:schema/
-                   @targetNamespace
+               	let $schema:=<x>{sc:schema($node)}</x>/*
+                 let $tns as xs:string := $schema/@targetNamespace
                  let $nsprefix := map:get($revns, $tns)[. != ""]
-                 let $elements :=
-                   <x>{ sc:type($node) }</x>//
-                   xs:element[@name and not(ancestor::xs:element)]/
-                   @name/
-                   data()
+                 let $elementtype as element():=<x>{$type}</x>/*
+                 let $elements := find-elements($schema,$elementtype)
+                 let $regex := concat('^',regex($schema,$elementtype,(),()),'$')
+                 let $elprefix:= string-join(for $e in $data/info/context/node() 
+                 	let $t:=data($e)
+					let $n:=tokenize(name($e),':')[last()]
+					where $elements=$n
+  					return for $i in 1 to $t return concat(',',$n),'')
+                let $_:=xdmp:add-response-header('prefix',xdmp:describe($elprefix))
+                let $_:=xdmp:add-response-header('regex',$regex)
+                let $_:=xdmp:add-response-header('elements',string-join($elements))
+                 let $validelements:=for $element in fn:distinct-values($elements)
+                 	let $s:=concat($elprefix,',',$element)
+                 	where fn:matches($s,$regex)
+                 	return $element
                  return
                    if ($annotations)
                    then
-                     for $element in $elements
+                     for $element in $validelements
                      let $n :=
                        concat(
                          "<",
@@ -419,8 +462,8 @@ as object-node()
                          $element,
                          ">")
                      let $annot :=
-                       (<x>{ sc:schema($node) }</x>//
-                        xs:element[@name = $element]/
+                       ($schema//
+                        xs:element[string(@name) = $element]/
                         xs:annotation/
                         xs:documentation)[1]
                      where starts-with($n, $prefix)
@@ -431,7 +474,7 @@ as object-node()
                          "hover": ($annot/text(), null-node {})[1]
                        }
                    else
-                     (fn:distinct-values($elements) !
+                     ($validelements !
                       concat(
                         "<",
                         $nsprefix ! concat(., ":"),
@@ -443,11 +486,10 @@ as object-node()
                      substring-after(., $prefix)
            default return ()
       } catch ($ex) {
+      	let $_:=xdmp:add-response-header('x-error',xdmp:describe($ex,5000,5000))
       	let $_:=xdmp:log(xdmp:describe($ex, (), ()))
       	return ()
       }
-    else
-      ()
   return
     object-node {
       "values": array-node {
@@ -977,6 +1019,8 @@ as element(orion:project)
 		<orion:workspace>{ $ws }</orion:workspace>
 		<orion:database>{ xdmp:database-name(xdmp:database()) }</orion:database>
 		<orion:content-location>{ $content-location }</orion:content-location>
+		<orion:permissions user-defaults="yes"/>
+		<orion:collections user-defaults="yes"/>
 		<orion:creator>{ xdmp:get-current-user() }</orion:creator>
 		<orion:created>{ fn:current-dateTime() }</orion:created>
 	</orion:project>
@@ -1018,7 +1062,7 @@ as object-node()
             "Name": $name,
             "Owner": xdmp:get-current-user()
           },
-          xdmp:default-permissions(),
+          xdmp:default-permissions("/orion/workspace/" || $id),
           "/orion/workspaces/")
       return
         object-node {
@@ -1057,16 +1101,17 @@ as object-node()
           "ContentLocation": $location
         }
       let $project := project-xml($id, $name, $ws, $location)
+      let $uri:=concat("/orion/workspace", $path, "/project/", $id)
       let $_ :=
         xdmp:document-insert(
-          concat("/orion/workspace", $path, "/project/", $id),
+          $uri,
           $project,
-          xdmp:default-permissions())
+          xdmp:default-permissions($uri),xdmp:default-collections($uri))
       let $_ :=
         try {
           xdmp:directory-create(
             ml-uri(orion-path($location), $project),
-            xdmp:default-permissions())
+            xdmp:default-permissions($uri),xdmp:default-collections($uri))
         } catch ($ex) {
           xdmp:log($ex)
         }
@@ -1569,14 +1614,14 @@ declare function orion-api:file-post-request(
               then
                 xdmp:directory-create(
                   $t,
-                  xdmp:default-permissions(),
-                  "/orion/files/")
+                  default-permissions($t,$project),
+                  default-collections($t,$project))
               else
                 xdmp:document-insert(
                   $t,
                   $d,
-                  xdmp:default-permissions(),
-                  "/orion/files/")
+                  default-permissions($t,$project),
+                  default-collections($t,$project))
             return
               if ($create-options = "move" and orion-api:amped-uri-exists($uri2,false()) and
                   not(starts-with($uri2, "/orion/workspace/")))
@@ -1602,13 +1647,12 @@ declare function orion-api:file-post-request(
         if ($directory)
         then
           xdmp:directory-create(
-            $uri, xdmp:default-permissions(), "/orion/files/")
+            $uri, default-permissions($uri,$project), default-collections($uri,$project))
         else
           xdmp:document-insert(
             $uri,
             ensure-type($uri, $source),
-            xdmp:default-permissions(),
-            "/orion/files/")
+            default-permissions($uri,$project), default-collections($uri,$project))
       let $_ :=
         if ($create-options = "move" and orion-api:amped-uri-exists($uri1,false()) and
             not(starts-with($uri1, "/orion/workspace/")))
@@ -1660,6 +1704,14 @@ as xs:string
       if ($node/binary())
       then xs:string(xs:base64Binary($node/binary()))
       else xdmp:quote($node)))
+};
+
+declare private function default-permissions($uri as xs:string,$project as element(orion:project)) {
+	xdmp:default-permissions($uri)
+};
+
+declare private function default-collections($uri as xs:string,$project as element(orion:project)) {
+	xdmp:default-permissions($uri)
 };
 
 declare function orion-api:file-put-request(
@@ -1718,11 +1770,15 @@ declare function orion-api:file-put-request(
               else
                 $realdoc0
             let $_ :=
-              if ($exists)
-              then xdmp:node-replace($doc, $realdoc)
-              else xdmp:document-insert($uri, $realdoc)
+              if ($uri=base-uri($project)) then
+              	xdmp:spawn-function(function(){xdmp:node-replace(doc($uri), $realdoc)},<options xmlns="xdmp:eval"><database>{xdmp:server-database(xdmp:server())}</database></options>)
+              else if ($exists and not(fn:empty($doc)))
+              then 
+              	xdmp:node-replace($doc, $realdoc)
+              else xdmp:document-insert($uri, $realdoc,default-permissions($uri,$project),default-collections($uri,$project))
             let $nhash := document-hash($realdoc)
             let $_ := xdmp:add-response-header("ETag", $nhash)
+            let $_ := xdmp:add-response-header("x-uri", $uri)
             return
               orion-api:file(
                 $project,
@@ -1753,11 +1809,11 @@ declare function orion-api:file-delete-request(
 {
   let $uri := ml-uri($path, $project)
   return
-    if (starts-with($uri, "/orion/workspace"))
+(:    if (starts-with($uri, "/orion/workspace"))
     then
       xdmp:set-response-code(
         403, "cannot delete project file")
-    else
+    else :)
       let $directory as xs:boolean :=
         ends-with($uri, "/") or
         count(xdmp:document-properties($uri)//prop:directory) !=
@@ -1825,7 +1881,7 @@ declare function orion-api:update-get-request(
       return
         try {
           xdmp:directory-create(
-            $dir, xdmp:default-permissions()),
+            $dir, default-permissions($dir,$project),default-collections($dir,$project)),
           1
         } catch ($ex) {
           xdmp:log($ex)
