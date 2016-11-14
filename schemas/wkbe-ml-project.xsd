@@ -24,6 +24,38 @@
 						<xs:attribute name="user-defaults" type="orion:YesNo" default="Yes"/>
 					</xs:complexType>
 				</xs:element>
+				<xs:element name="fragments" minOccurs="0">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="fragment-root"  minOccurs="1" maxOccurs="unbounded">
+								<xs:complexType>
+									<xs:sequence>
+										<xs:element name="fragment" minOccurs="1" maxOccurs="unbounded">
+											<xs:complexType>
+												<xs:attribute name="match" type="orion:relative-xpath" use="required"/> 
+												<xs:attribute name="select-children" type="orion:relative-xpath"/> 
+												<xs:attribute name="select-name" type="orion:relative-xpath" use="required"/> 
+											</xs:complexType>
+										</xs:element>
+									</xs:sequence>
+									<xs:attribute name="select" type="orion:root-xpath" use="required"/> 
+								</xs:complexType>
+							</xs:element>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="namespaces" minOccurs="0">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="namespace"  minOccurs="1" maxOccurs="unbounded">
+								<xs:complexType>
+									<xs:attribute name="prefix" type="xs:Name" use="required"/>
+									<xs:attribute name="uri" type="xs:anyURI" use="required"/>
+								</xs:complexType>
+							</xs:element>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
 			 <xs:element name="output-options" type="orion:OptionsType" minOccurs="0"/>
 				<xs:element name="creator" type="ext:user-name"/>
 				<xs:element name="created" type="xs:dateTime"/>
@@ -40,6 +72,18 @@
 			<xs:field xpath="@role"/>
 		</xs:unique>
 	</xs:element>
+ <xs:simpleType name="root-xpath">
+    <xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:pattern value="/.+[^/]"/>
+    </xs:restriction>
+ </xs:simpleType>
+ <xs:simpleType name="relative-xpath">
+    <xs:restriction base="xs:string">
+			<xs:minLength value="1"/>
+			<xs:pattern value="[^/].+[^/]"/>
+    </xs:restriction>
+ </xs:simpleType>
  <xs:simpleType name="YesNo">
     <xs:restriction base="xs:token">
       <xs:enumeration value="yes"/>
