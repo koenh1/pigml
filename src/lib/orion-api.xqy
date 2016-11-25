@@ -1864,8 +1864,11 @@ declare function orion-api:file-put-request(
                 validate {
                   $realdoc0
                 }
-              else
+              else if (fn:empty($xpath)) then
                 $realdoc0
+              else if ($realdoc0/text()) then
+                fn:error(xs:QName('orion-api:error'),'not well-formed xml')
+              else $realdoc0
             let $_ :=
               if ($uri=base-uri($project)) then
               	xdmp:spawn-function(function(){xdmp:node-replace(doc($uri), $realdoc)},<options xmlns="xdmp:eval"><database>{xdmp:server-database(xdmp:server())}</database></options>)
