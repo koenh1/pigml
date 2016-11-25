@@ -91,7 +91,7 @@ declare function orion-api:main(
         "unsupported api " || $api)
   case "POST" return
     switch ($api)
-    case "file" return orion-api:file-post-request($path, $project,$roles)
+    case "file" return orion-api:file-post-request($path,$xpath,$frag,$project,$roles)
     case "assist" return orion-api:assist-post-request($path, $project)
     case "workspace" return orion-api:workspace-post-request($path)
     case "pretty-print" return orion-api:pretty-print-post-request($path, $project)
@@ -101,7 +101,7 @@ declare function orion-api:main(
         "unsupported api " || $api)
   case "DELETE" return
     switch ($api)
-    case "file" return orion-api:file-delete-request($path, $project)
+    case "file" return orion-api:file-delete-request($path,$xpath,$frag, $project)
     case "workspace" return orion-api:workspace-delete-request($path, $project)
     default return
       fn:error(
@@ -1261,7 +1261,7 @@ declare function fragments($context as node(),$fragments as element(orion:fragme
     else if ($matches/@select-children) then object-node{
     	"Length":string-length(xdmp:quote($context)),
     	"Attributes":$attributes,
-    	"Directory":exists($matches/@select-children),
+    	"Directory":true(),
     	"Location":concat($location,'/xpath=',fn:encode-for-uri(xdmp:path($context,false())),'/frag=',fn:encode-for-uri(xdmp:path($matches,false()))),
     	"ChildrenLocation":concat($location,'/xpath=',fn:encode-for-uri(xdmp:path($context,false())),'/frag=',fn:encode-for-uri(xdmp:path($matches[1],false())),'?depth=1'),
     	"Name":string($name)
@@ -1567,6 +1567,8 @@ as xs:string
 
 declare function orion-api:file-post-request(
   $path as xs:string,
+  $xpath as xs:string?,
+  $frag as xs:string?,
   $project as element(orion:project),
   $roles as xs:unsignedLong*)
 {
@@ -1594,19 +1596,17 @@ declare function orion-api:file-post-request(
     else if ($body/Location/data())
     then ends-with($body/Location/data(), "/")
     else false()
-  let $_ := xdmp:add-response-header("ETag", xdmp:integer-to-hex($ts))
+  let $_ := xdmp:add-response-header("ETag", xdmp:integer-to-hex($ts))  (: TODO remove? :)
   let $parents := tokenize($path, "/")[. != ""]
-  let $uri :=
-    ml-uri(
-      concat(
+  let $npath:= concat(
         $path,
-        if (ends-with($path, "/") or fn:empty($name))
+        if (ends-with($path, "/") or fn:empty($name) or not(fn:empty($xpath)))
         then ()
         else "/",
-        $name,
-        if ($directory) then "/" else ()),
-      $project)
-  let $exists as xs:boolean := amped-uri-exists($uri, false())
+        if (fn:empty($xpath)) then $name else (),
+        if ($directory and fn:empty($xpath)) then "/" else ())
+  let $uri :=ml-uri($npath,$project)
+  let $exists as xs:boolean := fn:empty($xpath) and amped-uri-exists($uri, false())
   return
     if ($create-options = "no-overwrite" and $exists)
     then
@@ -1687,10 +1687,10 @@ declare function orion-api:file-post-request(
           let $_ :=
             xdmp:set-response-code(
               if ($exists) then 200 else 201, "created")
-          let $_ := xdmp:add-response-header("Location", $uri)
+          let $_ := xdmp:add-response-header("Location", orion-uri($npath))
           return
           simple-file($project,$uri,document{()},$ts,(),$roles,$path,$name,false(),(),0) 
-    else
+    else if (fn:empty($xpath)) then
       let $uri1 :=
         ml-uri(
           substring-after($body/Location/data(), "/file"),
@@ -1698,7 +1698,7 @@ declare function orion-api:file-post-request(
       let $source as node() :=
         if ($create-options = ("move", "copy"))
         then doc($uri1)
-        else text { "" }
+        else document{text { "" }}
       let $_ :=
         if ($directory)
         then
@@ -1717,9 +1717,56 @@ declare function orion-api:file-post-request(
       let $_ :=
         xdmp:set-response-code(
           if ($exists) then 200 else 201, "created")
-      let $_ := xdmp:add-response-header("Location", $uri)
+      let $_ := xdmp:add-response-header("Location", orion-uri($npath))
       return
       simple-file($project,$uri,$source,$ts,(),$roles,$path,$name,false(),(),0)
+    else
+      let $fragment as element(orion:fragment):=$project/xdmp:unpath($frag)!(.,./following-sibling::orion:fragment)[not(contains(@select-name,'..')) and fn:empty(@select-children)!=$directory][1]
+      let $element:=fn:tokenize($fragment/@match,'[\[|]')[1]
+      let $ns:=map:new($project/orion:namespaces/orion:namespace!map:entry(./@prefix,./@uri/data()))
+      let $frags:=fragments(doc($uri)/xdmp:unpath($xpath),$project/xdmp:unpath($frag)/parent::orion:fragment-root/orion:fragment,
+          map:new($project/orion:namespaces/orion:namespace!map:entry(./@prefix,./@uri/data())),1,
+          orion-api:capabilities($uri,$roles),orion-uri($path))/Children/Name/data()!strip-xml-ext(.)
+      let $node as node():=if ($create-options=('move','copy')) then
+        let $location:=xdmp:url-decode($body/Location/data()!substring-after(.,'/file'))
+        let $spath:=if (contains($location,'/xpath=')) then substring-before($location,'/xpath=') else $location
+        let $sfrag as xs:string?:= if (contains($location,'/xpath=')) then substring-after($location,'/frag=') else ()
+        let $sxpath as xs:string?:= if (contains($location,'/xpath=')) then substring-before(substring-after($location,'/xpath='),'/frag=') else ()
+        return doc(ml-uri($spath,$project))/xdmp:unpath($sxpath)
+      else construct(($element,fn:tokenize($fragment/@select-name,'/')!fn:tokenize(.,'[\[|]')[1]),strip-xml-ext($name),$ns)
+      return if ($create-options = "no-overwrite" and $frags=strip-xml-ext($name)) then
+          xdmp:set-response-code(412, "file " || $name || " exists")
+        else
+        let $_:=xdmp:node-insert-child(doc($uri)/xdmp:unpath($xpath),$node)
+        let $_:=if ($create-options='move') then xdmp:node-delete($node) else ()
+        let $_ :=
+          xdmp:set-response-code(
+            if ($frags=strip-xml-ext($name)) then 200 else 201, "created")
+        return ()
+};
+
+declare private function strip-xml-ext($s as xs:string) as xs:string {
+  if (ends-with($s,'.xml')) then substring($s,1,string-length($s)-4) else $s
+};
+
+declare private function construct($el as xs:string*,$value as xs:string,$ns as map:map) as node()? {
+  if (count($el)=1) then 
+    if (starts-with($el,'@')) then
+      if (contains($el,':')) then 
+        let $prefix:=fn:tokenize($el,':')[1]!substring-after(.,'@')
+        return attribute {fn:QName(map:get($ns,$prefix),substring-after($el,':'))}{$value}
+      else attribute {xs:QName(substring-after($el,'@'))}{$value}
+    else
+      if (contains($el,':')) then 
+        let $prefix:=fn:tokenize($el,':')[1]
+        return element {fn:QName(map:get($ns,$prefix),substring-after($el,':'))}{$value}
+      else element {xs:QName($el)}{$value}
+  else 
+    let $el1:=fn:head($el)
+    return if (contains($el1,':')) then 
+        let $prefix:=fn:tokenize($el1,':')[1]
+        return element {fn:QName(map:get($ns,$prefix),substring-after($el1,':'))}{construct(fn:tail($el),$value,$ns)}
+      else element {xs:QName($el1)}{construct(fn:tail($el),$value,$ns)}
 };
 
 declare private  
@@ -1849,6 +1896,8 @@ declare function orion-api:file-put-request(
 
 declare function orion-api:file-delete-request(
   $path as xs:string,
+  $xpath as xs:string?,
+  $frag as xs:string?,
   $project as element(orion:project))
 {
   let $uri := ml-uri($path, $project)
@@ -1858,16 +1907,15 @@ declare function orion-api:file-delete-request(
       xdmp:set-response-code(
         403, "cannot delete project file")
     else :)
-      let $directory as xs:boolean :=
-        ends-with($uri, "/") or
-        count(xdmp:document-properties($uri)//prop:directory) !=
-        0
+      let $directory as xs:boolean :=fn:empty($xpath) and 
+        (ends-with($uri, "/") or
+        count(xdmp:document-properties($uri)//prop:directory) != 0 )
       let $ifmatch as xs:string := normalize-space(xdmp:get-request-header("If-Match"))
       let $doc := doc($uri)
       return
         if (not($directory) and fn:empty($doc))
         then xdmp:set-response-code(205, "Ok (not found)")
-        else
+        else if (fn:empty($xpath)) then
           let $hash := if ($ifmatch != "") then document-hash($doc) else ()
           return
             if ($ifmatch = "" or $ifmatch = $hash)
@@ -1898,6 +1946,20 @@ declare function orion-api:file-delete-request(
               xdmp:set-response-code(
                 414,
                 "document " || $uri || " changed " || $ifmatch || "!=" || $hash)
+        else
+          let $node:=$doc/xdmp:unpath($xpath)
+          return if (fn:empty($node)) 
+            then xdmp:set-response-code(205, "Ok (not found)")
+          else 
+            let $hash := if ($ifmatch != "") then document-hash($node) else ()
+            return if ($ifmatch = "" or $ifmatch = $hash)
+            then
+              let $_:=xdmp:node-delete($node)
+              return xdmp:set-response-code(205, "Deleted fragment with hash "||document-hash($node))
+            else xdmp:set-response-code(
+                414,
+                "document " || $uri || " changed " || $ifmatch || "!=" || $hash)            
+
 };
 
 declare function orion-api:update-get-request(
