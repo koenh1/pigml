@@ -33,7 +33,7 @@ declare function orion-api:main()
           "/orion/workspace/",
           $parts[2],
           "/project/",
-          $parts[3]))/
+          if ($api='xfer' and ends-with($parts[3],'.zip')) then substring($parts[3],1,string-length($parts[3])-4) else $parts[3]))/
       *
     else
       ()
@@ -70,20 +70,27 @@ declare function orion-api:main(
   case "GET" return
     switch ($api)
     case "file" return orion-api:file-get-request($path,$xpath,$frag,$project,$roles)
+    case "xfer" return 
+      let $verb:=xdmp:get-request-field("verb")
+      let $path2:=if (ends-with($path,'.zip')) then concat(substring($path,1,string-length($path)-4),'/') else $path
+      return switch($verb)
+      case "import" return fn:error(xs:QName("orion-api:error"),'verb '||$verb||' not supported')
+      case "export" return orion-api:export-get-request($path2,$xpath,$frag,$project,$roles)
+      default return fn:error(xs:QName("orion-api:error"),'verb '||$verb||' not supported')
     case "validate" return orion-api:validate-get-request($path,$xpath,$frag, $project)
     case "workspace" return orion-api:workspace-get-request($path)
     case "filesearch" return
       orion-api:filesearch-get-request(
         $path, $workspace, $project,$roles)
-    case "compile" return orion-api:compile-get-request($path, $project)
-    case "update" return orion-api:update-get-request($path, $project)
+    case "compile" return orion-api:compile-get-request($path,$project)
+    case "update" return orion-api:update-get-request($path,$project)
     default return
       fn:error(
         xs:QName("orion-api:error"),
         "unsupported api " || $api)
   case "PUT" return
     switch ($api)
-    case "file" return orion-api:file-put-request($path,$xpath,$frag, $project,$roles)
+    case "file" return orion-api:file-put-request($path,$xpath,$frag,$project,$roles)
     case "workspace" return orion-api:workspace-put-request($path)
     default return
       fn:error(
@@ -92,9 +99,9 @@ declare function orion-api:main(
   case "POST" return
     switch ($api)
     case "file" return orion-api:file-post-request($path,$xpath,$frag,$project,$roles)
-    case "assist" return orion-api:assist-post-request($path, $project)
+    case "assist" return orion-api:assist-post-request($path,$xpath,$frag,$project)
     case "workspace" return orion-api:workspace-post-request($path)
-    case "pretty-print" return orion-api:pretty-print-post-request($path, $project)
+    case "pretty-print" return orion-api:pretty-print-post-request($path,$project)
     default return
       fn:error(
         xs:QName("orion-api:error"),
@@ -294,9 +301,13 @@ declare private function regex($schema as element(xs:schema),$node as element(),
   typeswitch($node)
   case element(xs:sequence) return reqex-freq($node/node()!regex($schema,.,(),()),($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
   case element(xs:choice) return reqex-freq(concat('(',string-join($node/node()!regex($schema,.,$min,$max),'|'),')'),($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
+  case element(xs:all) return reqex-freq($node/node()!regex($schema,.,(),()),($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
   case element(xs:element) return 
     if ($node/@name) then reqex-freq($node/@name,($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
-    else $schema/xs:element[fn:QName($schema/@targetNamespace,@name)=$node/@ref]!regex($schema,.,($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
+    else if (contains($node/@ref/string(),':')) then 
+    $schema/xs:element[fn:QName($schema/@targetNamespace,@name)=$node/@ref]!regex($schema,.,($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
+    else
+    $schema/xs:element[fn:QName($schema/@targetNamespace,@name)=fn:QName($schema/@targetNamespace,$node/@ref/string())]!regex($schema,.,($node/@minOccurs,$min)[1],($node/@maxOccurs,$max)[1])
   case element(xs:attribute) return ()
   default return $node/node()!regex($schema,.,$min,$max)
 };
@@ -307,7 +318,10 @@ declare private function find-elements($schema as element(xs:schema),$node as el
   case element(xs:choice) return $node/node()!find-elements($schema,.)
   case element(xs:element) return 
     if ($node/@name) then $node/@name/string(.)
-    else $schema/xs:element[fn:QName($schema/@targetNamespace,@name)=$node/@ref]!find-elements($schema,.)
+    else if (contains($node/@ref/string(),':')) then
+    $schema/xs:element[fn:QName($schema/@targetNamespace,@name)=$node/@ref]!find-elements($schema,.)
+    else 
+    $schema/xs:element[fn:QName($schema/@targetNamespace,@name)=fn:QName($schema/@targetNamespace,$node/@ref/string())]!find-elements($schema,.)
   case element(xs:attribute) return ()
   default return $node/node()!find-elements($schema,.)
 };
@@ -315,11 +329,13 @@ declare private function find-elements($schema as element(xs:schema),$node as el
 
 declare function orion-api:assist-post-request(
   $path as xs:string,
+  $fxpath as xs:string?,
+  $frag as xs:string?,
   $project as element(orion:project))
 as object-node()?
 {
   let $uri := ml-uri($path, $project)
-  let $doc := doc($uri)
+  let $doc := if (fn:empty($fxpath)) then doc($uri) else document{doc($uri)/xdmp:unpath($fxpath)}
   let $_ := xdmp:set-response-content-type("application/json")
   let $data as object-node() := xdmp:unquote(xdmp:get-request-body("text"))/object-node()
   let $xpath as xs:string := $data/info/xpath/data()
@@ -342,6 +358,7 @@ as object-node()?
 	      else
 	        $xpath,
 	    $ns)
+  let $_:=xdmp:add-response-header('x-uri',xdmp:describe($node0))
   let $node as node()?:=if ((fn:empty($node0)) and contains($xpath,'/@')) then $doc/xdmp:value(substring-before($xpath,'/@'),$ns) else $node0
   return if (fn:empty($node)) then ()
   else
@@ -440,11 +457,11 @@ as object-node()?
                  let $elementtype as element():=<x>{$type}</x>/*
                  let $elements := find-elements($schema,$elementtype)
                  let $regex := concat('^',regex($schema,$elementtype,(),()),'$')
-                 let $elprefix:= string-join(for $e in $data/info/context/node() 
+                 let $elprefix:= if ($node/element()) then string-join(for $e in $data/info/context/node() 
                  	let $t:=data($e)
-					let $n:=tokenize(name($e),':')[last()]
-					where $elements=$n
-  					return for $i in 1 to $t return concat(',',$n),'')
+        					let $n:=tokenize(name($e),':')[last()]
+          					where $elements=$n
+           					return for $i in 1 to $t return concat(',',$n),'') else ()
                 let $_:=xdmp:add-response-header('prefix',xdmp:describe($elprefix))
                 let $_:=xdmp:add-response-header('regex',$regex)
                 let $_:=xdmp:add-response-header('elements',string-join($elements))
@@ -963,10 +980,10 @@ as object-node()?
                     "/?depth=1"),
                   "ExportLocation": export-location(
                     concat(
-                      orion-uri($path), "/", $project/@id)),
+                      $path, "/", $project/@id)),
                   "ImportLocation": import-location(
                     concat(
-                      orion-uri($path), "/", $project/@id)),
+                      $path, "/", $project/@id)),
                   "LocalTimeStamp": xdmp:document-timestamp(base-uri($project)) idiv
                   10000
                 }
@@ -1160,23 +1177,21 @@ as json:object*
 };
 
 declare private  
-function import-location($uri as xs:string)
+function import-location($path as xs:string)
 as xs:string
 {
-  concat("/xfer/import", substring-after($uri, "/file"))
+  concat("/orion/xfer/import", $path)
 };
 
 declare private  
-function export-location($uri as xs:string)
+function export-location($path as xs:string)
 as xs:string
 {
   concat(
-    "/xfer/export",
-    substring-after(
-      if (ends-with($uri, "/"))
-      then substring($uri, 1, string-length($uri) - 1)
-      else $uri,
-      "/file"))
+    "/orion/xfer/export",
+      if (ends-with($path, "/"))
+      then substring($path, 1, string-length($path) - 1)
+      else $path,'.zip')
 };
 
 declare function ser(
@@ -1245,11 +1260,11 @@ as item()
   else $node
 };
 
-declare function fragments($context as node(),$fragments as element(orion:fragment)+,$ns as map:map,$depth as xs:int,$attributes as object-node(),$location as xs:string) {
+declare function fragments($context as node(),$fragments as element(orion:fragment)+,$ns as map:map,$depth as xs:int,$attributes as object-node(),$location as xs:string) as object-node() {
     let $matches:=(for $p in $fragments
       where some $node in $context/../xdmp:value($p/@match,$ns) satisfies $node is $context
       return $p)[1]
-    let $name:=$context/xdmp:value($matches/@select-name,$ns)/string()
+    let $name as xs:string:=$context/xdmp:value($matches/@select-name,$ns)
     return if ($depth gt 0 and $matches/@select-children) then
     object-node{
     		"Directory":true(),
@@ -1279,7 +1294,9 @@ declare function simple-file($project as element(orion:project),$uri as xs:strin
   let $attributes as object-node():=orion-api:capabilities($uri,$roles)
   let $ns as map:map:=map:new($project/orion:namespaces/orion:namespace!map:entry(./@prefix,./@uri/data()))
   let $root:=(for $frag in $project/orion:fragments/orion:fragment-root
-  	return ($frag,$doc/xdmp:value(substring-after($frag/@select,'/'),$ns)))[1 to 2]
+      let $x:=$doc/xdmp:value(substring-after($frag/@select,'/'),$ns)
+      where not(fn:empty($x))
+  	return ($frag,$x))[1 to 2]
   return if (count($root)=2) then
   	fragments($root[2],$root[1]/orion:fragment,$ns,$depth,$attributes,orion-uri($path))
   else
@@ -1393,9 +1410,9 @@ as json:object
             map-with(., "Location", orion-uri($path)) !
            map-with(., "Name", $name)  !
             map-with(
-              ., "ImportLocation", import-location($uri)) !
+              ., "ImportLocation", import-location($path)) !
             map-with(
-              ., "ExportLocation", export-location($uri))
+              ., "ExportLocation", export-location($path))
           !
         (if ($depth gt 0)
          then
@@ -1450,6 +1467,29 @@ as json:object
     else
       simple-file($project,$uri,doc($uri),$ts,(),$roles,$path,$name,$include-parents,$parents,$depth)
       
+};
+
+declare function orion-api:export-get-request(
+  $path as xs:string,
+  $xpath as xs:string?,
+  $frag as xs:string?,
+  $project as element(orion:project),
+  $roles as xs:unsignedLong*)
+{
+  let $uri := ml-uri($path, $project)
+  let $_:=xdmp:add-response-header('x-uri',$uri)
+  return if (fn:empty($xpath)) then
+    let $_:=xdmp:set-response-content-type("application/zip")
+    let $docs:=xdmp:directory($uri,'infinity')
+    return xdmp:zip-create(<parts xmlns="xdmp:zip">
+      {for $doc in $docs 
+        let $u:=base-uri($doc)
+        let $s:=xdmp:document-timestamp($u)
+        let $ts:=xs:dateTime('1970-01-01T00:00:00+00:00') + xs:dayTimeDuration('PT' || ($s idiv 10000000) || 'S')
+        return <part last-modified="{$ts}">{substring-after($u,$uri)}</part>}
+      </parts>,$docs)
+  else
+  () (: TODO :)
 };
 
 declare function orion-api:file-get-request(

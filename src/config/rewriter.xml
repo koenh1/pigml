@@ -22,6 +22,18 @@
         <dispatch>/fs.xqy</dispatch>
    </match-path>
 
+   <match-path matches="^/orion/xfer/import(/.*)$">
+        <add-query-param name="api">xfer</add-query-param>
+        <add-query-param name="verb">import</add-query-param>
+        <add-query-param name="path">$1</add-query-param>
+        <dispatch>/orion.xqy</dispatch>      
+   </match-path>
+   <match-path matches="^/orion/xfer/export(/.*)$">
+        <add-query-param name="api">xfer</add-query-param>
+        <add-query-param name="verb">export</add-query-param>
+        <add-query-param name="path">$1</add-query-param>
+        <dispatch>/orion.xqy</dispatch>      
+   </match-path>
    <match-path matches="^/orion/([^/]+)(.*)$">
         <add-query-param name="api">$1</add-query-param>
         <add-query-param name="path">$2</add-query-param>
