@@ -69,7 +69,10 @@ declare function orion-api:main(
   switch ($method)
   case "GET" return
     switch ($api)
-    case "file" return orion-api:file-get-request($path,$xpath,$frag,$project,$roles)
+    case "file" return 
+      if (xdmp:get-request-field('project')='true') then 
+        xdmp:set-response-code(204,"no content")
+      else orion-api:file-get-request($path,$xpath,$frag,$project,$roles)
     case "xfer" return 
       let $verb:=xdmp:get-request-field("verb")
       let $path2:=if (ends-with($path,'.zip')) then concat(substring($path,1,string-length($path)-4),'/') else $path

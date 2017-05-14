@@ -10,6 +10,8 @@
  ******************************************************************************/
 
 /*eslint-env browser, amd*/
+
+
 define(["orion/Deferred", "orion/plugin", "ext/orion/mlFileImpl","ext/orion/xmlparser","requirejs/domReady!"], function(Deferred, PluginProvider, FileServiceImpl,parser) {
   function trace(implementation) {
     var method;
@@ -250,6 +252,100 @@ provider.registerServiceProvider("orion.page.link.related", null, {
  });
 */
 
+var base = "http://localhost/myOperations/";
+
+function saveOperation(operation) {
+    var operations = JSON.parse(localStorage.getItem(base) || "{}");
+    console.log(operation)
+    operations[operation.Location] = operation;
+    localStorage.setItem(base, JSON.stringify(operations));
+}
+ 
+function generateLocation() {
+    var operationNumber = 1 + parseInt(localStorage.getItem("lastOperation") || "0");
+    localStorage.setItem("lastOperation", operationNumber);
+    return base + operationNumber;
+}
+ 
+function reportProgress(deferred, operation) {
+    if (operation.type !== "load" && operation.type !== "progress")
+        return;
+    operation.type = "progress";
+    operation.loaded=operation.loaded+1;
+    saveOperation(operation);
+    deferred.progress(operation);
+    setTimeout(function () {
+        reportProgress(deferred, operation)
+    }, 1000);
+}
+provider.registerService("orion.edit.command", {
+    run: function (text) {
+        var deferred = new Deferred();
+        var timestamp = new Date().getTime();
+        var operation = {
+            type: "load",
+            timestamp: timestamp,
+            cancelable:true,
+            lengthComputable:true,
+            total:100,
+            loaded:0,
+            expires: timestamp + 600000,
+            Location: generateLocation()
+        };
+        saveOperation(operation);
+        setTimeout(function () {
+            console.log(operation)
+            deferred.resolve(text.toUpperCase());
+            operation.type = "loadend";
+            saveOperation(operation);
+            console.log(operation)
+        }, 50000);
+ 
+        reportProgress(deferred, operation);
+        return deferred.promise;
+    }
+}, {
+    name: "UPPERCASE",
+    img: "../images/gear.gif",
+    key: ["u", true]
+});
+ 
+provider.registerService("orion.core.operation", {
+    getOperation: function (location) {
+        var deferred = new Deferred();
+        var operation = JSON.parse(localStorage.getItem(base) || "{}")[location];
+        if (!operation) {
+            deferred.reject("Cannot find operation: " + location);
+            return deferred.promise;
+        }
+        if (operation.type !== "load" && operation.type !== "progress") {
+            deferred.resolve();
+        }
+        reportProgress(deferred, operation);
+        return deferred.promise;
+    },
+    removeCompletedOperations: function () {
+        var operations = JSON.parse(localStorage.getItem(base) || "{}");
+        for (var operationLocation in operations) {
+            var operation = operations[operationLocation];
+            if (operation.type !== "load" && operation.type !== "progress") {
+                delete operations[operationLocation];
+            }
+            else if (operation.expires===undefined||operation.expires < new Date().getTime()) {
+                delete operations[operationLocation];
+            }
+        }
+        localStorage.setItem(base, JSON.stringify(operations));
+        return Object.keys(operations);
+    },
+    removeOperation: function (location) {
+        var operations = JSON.parse(localStorage.getItem(base) || "{}");
+        delete operations[location];
+    }
+}, {
+    name: "Upper Tasks",
+    pattern: base
+});
 
     provider.registerService("orion.cm.managedservice",
          {  updated: function(properties) {
